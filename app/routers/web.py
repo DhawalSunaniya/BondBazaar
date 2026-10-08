@@ -95,15 +95,15 @@ async def home_page(request: Request, db: Session = Depends(get_db)):
     recent_orders = db.query(SecondaryOrder).filter(SecondaryOrder.user_id == user.id).order_by(SecondaryOrder.created_at.desc()).limit(5).all()
 
     return templates.TemplateResponse(
-    request=request,
-    name="home.html",
-    context={
-        "user": user,
-        "summary": summary,
-        "state": state,
-        "featured_bonds": featured_bonds,
-        "recent_orders": recent_orders
-    }
+        request=request,
+        name="home.html",
+        context={
+            "user": user,
+            "summary": summary,
+            "state": state,
+            "featured_bonds": featured_bonds,
+            "recent_orders": recent_orders
+        }
 )
 
 @router.get("/marketplace", response_class=HTMLResponse)
