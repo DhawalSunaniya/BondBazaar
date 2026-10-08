@@ -94,14 +94,17 @@ async def home_page(request: Request, db: Session = Depends(get_db)):
     featured_bonds = db.query(Instrument).filter(Instrument.is_active == True).limit(6).all()
     recent_orders = db.query(SecondaryOrder).filter(SecondaryOrder.user_id == user.id).order_by(SecondaryOrder.created_at.desc()).limit(5).all()
 
-    return templates.TemplateResponse("home.html", {
-        "request": request,
+    return templates.TemplateResponse(
+    request=request,
+    name="home.html",
+    context={
         "user": user,
         "summary": summary,
         "state": state,
         "featured_bonds": featured_bonds,
         "recent_orders": recent_orders
-    })
+    }
+)
 
 @router.get("/marketplace", response_class=HTMLResponse)
 async def marketplace_page(
@@ -145,8 +148,10 @@ async def marketplace_page(
     bonds = query.all()
     state = db.query(SystemState).first()
 
-    return templates.TemplateResponse("marketplace.html", {
-        "request": request,
+    return templates.TemplateResponse(
+    request=request,
+    name="marketplace.html",
+    context={
         "user": user,
         "bonds": bonds,
         "state": state,
@@ -157,7 +162,8 @@ async def marketplace_page(
         "min_ytm": min_ytm,
         "max_ytm": max_ytm,
         "min_inv": min_inv
-    })
+    }
+)
 
 @router.get("/bonds/{isin}", response_class=HTMLResponse)
 async def bond_detail_page(isin: str, request: Request, db: Session = Depends(get_db)):
@@ -190,8 +196,10 @@ async def bond_detail_page(isin: str, request: Request, db: Session = Depends(ge
         Holding.instrument_id == inst.id
     ).first() if user else None
 
-    return templates.TemplateResponse("bond_detail.html", {
-        "request": request,
+    return templates.TemplateResponse(
+    request=request,
+    name="bond_detail.html",
+    context={
         "user": user,
         "bond": inst,
         "schedule": schedule,
@@ -202,7 +210,8 @@ async def bond_detail_page(isin: str, request: Request, db: Session = Depends(ge
         "cf_values": cf_values,
         "order_book": order_book,
         "user_holding": user_holding
-    })
+    }
+)
 
 @router.post("/order/place")
 async def place_order_web(
