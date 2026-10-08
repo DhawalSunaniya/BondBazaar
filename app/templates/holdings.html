@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block title %}Demat Portfolio Holdings | BondBazaar{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+        <h1 style="font-size: 26px;">Demat Holdings & Positions</h1>
+        <p style="color: var(--text-muted); font-size: 14px;">Real-time valuation, coupon schedules, and unrealized gains across your debt portfolio.</p>
+    </div>
+    <div style="display: flex; gap: 10px;">
+        <a href="/reports" class="btn btn-secondary">Download Tax & P&L Statements</a>
+        <a href="/marketplace" class="btn btn-primary">+ Buy More Bonds</a>
+    </div>
+</div>
+
+<!-- Holdings Summary Cards -->
+<div class="grid-4" style="margin-bottom: 24px;">
+    <div class="stat-card">
+        <span class="stat-label">Total Capital Invested</span>
+        <span class="stat-value">{{ tot_invested|inr }}</span>
+        <span class="stat-sub">{{ rows|length }} Active Positions</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Current Market Value</span>
+        <span class="stat-value" style="color: var(--gold-primary);">{{ tot_current_val|inr }}</span>
+        <span class="stat-sub">Clean price valuation</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Accrued Interest (Undistributed)</span>
+        <span class="stat-value" style="color: #38BDF8;">{{ tot_accrued|inr }}</span>
+        <span class="stat-sub">Receivable at next coupon</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Total Unrealized P&L</span>
+        <span class="stat-value" style="color: {% if total_pnl >= 0 %}#10B981{% else %}#EF4444{% endif %};">
+            {% if total_pnl >= 0 %}+{% endif %}{{ total_pnl|inr }}
+        </span>
+        <span class="stat-sub" style="font-weight: 600;">{{ total_pnl_pct|round(2) }}% return</span>
+    </div>
+</div>
+
+<div class="card">
+    <div class="table-responsive">
+        <table class="bb-table">
+            <thead>
+                <tr>
+                    <th>Security Name / ISIN</th>
+                    <th>Type</th>
+                    <th>Units</th>
+                    <th>Face Value</th>
+                    <th>Avg Buy Price</th>
+                    <th>Current Clean Price</th>
+                    <th>Invested Capital</th>
+                    <th>Current Valuation</th>
+                    <th>Accrued Interest</th>
+                    <th>YTM</th>
+                    <th>Next Coupon</th>
+                    <th>Maturity Date</th>
+                    <th>Days to Mat.</th>
+                    <th>Unrealized P&L</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rows %}
+                <tr>
+                    <td>
+                        <a href="/bonds/{{ r.instrument.isin }}" style="font-weight: 600; font-size: 14px;">{{ r.instrument.name }}</a>
+                        <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">
+                            {{ r.instrument.isin }} • {{ r.instrument.credit_rating }}
+                        </div>
+                    </td>
+                    <td><span class="badge badge-type">{{ r.instrument.instrument_type }}</span></td>
+                    <td style="font-weight: 600;">{{ r.holding.units }}</td>
+                    <td>{{ r.instrument.face_value|inr }}</td>
+                    <td>{{ r.holding.avg_purchase_price|inr }}</td>
+                    <td style="font-weight: 600;">{{ r.instrument.clean_price|inr }}</td>
+                    <td>{{ r.invested|inr }}</td>
+                    <td style="font-weight: 700; color: var(--text-main);">{{ r.current_val|inr }}</td>
+                    <td style="color: #38BDF8;">{{ r.accrued|inr }}</td>
+                    <td style="color: #10B981; font-weight: 700;">{{ r.instrument.current_ytm|pct }}</td>
+                    <td style="font-size: 13px;">{{ r.instrument.next_coupon_date or 'N/A' }}</td>
+                    <td style="font-size: 13px;">{{ r.instrument.maturity_date }}</td>
+                    <td style="font-size: 13px; color: var(--text-dim);">{{ r.days_to_mat }} d</td>
+                    <td style="font-weight: 600; color: {% if r.pnl >= 0 %}#10B981{% else %}#EF4444{% endif %};">
+                        {% if r.pnl >= 0 %}+{% endif %}{{ r.pnl|inr }}
+                        <div style="font-size: 11px;">({{ r.pnl_pct|round(2) }}%)</div>
+                    </td>
+                    <td>
+                        <a href="/bonds/{{ r.instrument.isin }}" class="btn btn-secondary btn-sm">Trade</a>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="15" style="text-align: center; padding: 40px; color: var(--text-muted);">
+                        No holdings currently present in your demat account.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="6" style="text-align: right; text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; color: var(--text-dim);">
+                        Portfolio Totals:
+                    </td>
+                    <td style="font-weight: 700;">{{ tot_invested|inr }}</td>
+                    <td style="font-weight: 700; color: var(--gold-primary);">{{ tot_current_val|inr }}</td>
+                    <td style="font-weight: 700; color: #38BDF8;">{{ tot_accrued|inr }}</td>
+                    <td colspan="4"></td>
+                    <td style="font-weight: 700; color: {% if total_pnl >= 0 %}#10B981{% else %}#EF4444{% endif %};">
+                        {% if total_pnl >= 0 %}+{% endif %}{{ total_pnl|inr }} ({{ total_pnl_pct|round(2) }}%)
+                    </td>
+                    <td></td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+</div>
+{% endblock %}

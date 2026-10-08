@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Open Demat Account | BondBazaar{% endblock %}
+
+{% block content %}
+<div style="max-width: 540px; margin: 30px auto;">
+    <div class="card card-gold-glow">
+        <div style="text-align: center; margin-bottom: 24px;">
+            <div class="brand-logo-icon" style="margin: 0 auto 12px auto; width: 44px; height: 44px; font-size: 24px;">B</div>
+            <h2 style="font-size: 22px;">Open Demat & Bond Account</h2>
+            <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">Direct Institutional & Secondary Debt Access</p>
+        </div>
+
+        {% if error_message %}
+        <div class="alert alert-danger">{{ error_message }}</div>
+        {% endif %}
+
+        <form method="POST" action="/register">
+            <div class="form-group">
+                <label class="form-label">Full Legal Name (as per PAN)</label>
+                <input type="text" name="full_name" class="form-control" placeholder="e.g. Vikram Singhania" required autofocus>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label">Email Address</label>
+                    <input type="email" name="email" class="form-control" placeholder="name@domain.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Mobile Number</label>
+                    <input type="tel" name="mobile" class="form-control" placeholder="+91 98765 43210" required>
+                </div>
+            </div>
+
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label">PAN Number</label>
+                    <input type="text" name="pan" class="form-control" placeholder="ABCDE1234F" maxlength="10" required style="text-transform: uppercase;">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">16-Digit Demat Account</label>
+                    <input type="text" name="demat_account" class="form-control" placeholder="1208160012345678" maxlength="16" required>
+                </div>
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 14px;">Complete Paperless KYC & Register</button>
+        </form>
+
+        <div style="text-align: center; margin-top: 20px; font-size: 13px; color: var(--text-muted);">
+            Already have an account? <a href="/login">Sign In with OTP</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

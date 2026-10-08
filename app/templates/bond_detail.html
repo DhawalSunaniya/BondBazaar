@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+
+{% block title %}{{ bond.name }} ({{ bond.isin }}) | BondBazaar{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 20px;">
+    <a href="/marketplace" style="color: var(--text-dim); font-size: 13px;">← Back to Marketplace</a>
+</div>
+
+<!-- Header Top Banner -->
+<div class="card card-gold-glow" style="margin-bottom: 24px; padding: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px;">
+        <div>
+            <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 8px;">
+                <span class="badge badge-type">{{ bond.instrument_type }}</span>
+                {% if 'SOVEREIGN' in bond.credit_rating %}
+                <span class="badge badge-sovereign">SOVEREIGN GUARANTEED</span>
+                {% elif 'AAA' in bond.credit_rating %}
+                <span class="badge badge-aaa">AAA RATED</span>
+                {% elif 'AA' in bond.credit_rating %}
+                <span class="badge badge-aa">{{ bond.credit_rating }} RATED</span>
+                {% else %}
+                <span class="badge badge-a">{{ bond.credit_rating }} RATED</span>
+                {% endif %}
+                <span style="font-size: 13px; color: var(--text-dim);">Rated by {{ bond.rating_agency }}</span>
+            </div>
+            <h1 style="font-size: 26px; margin-bottom: 4px;">{{ bond.name }}</h1>
+            <p style="color: var(--text-muted); font-size: 14px;">
+                ISIN: <code style="color: var(--gold-primary);">{{ bond.isin }}</code> • Issuer: <strong>{{ bond.issuer_name }}</strong>
+            </p>
+        </div>
+
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <button onclick="openTradeModal('BUY')" class="btn btn-primary" style="padding: 12px 28px; font-size: 15px;">
+                Buy Bond
+            </button>
+            {% if user_holding and user_holding.units > 0 %}
+            <button onclick="openTradeModal('SELL')" class="btn btn-danger" style="padding: 12px 24px; font-size: 15px;">
+                Sell (You own {{ user_holding.units }} units)
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Key Financial Metrics 6-Card Grid -->
+<div class="grid-3" style="margin-bottom: 24px;">
+    <div class="stat-card">
+        <span class="stat-label">Indicative Clean Price</span>
+        <span class="stat-value">{{ bond.clean_price|inr }}</span>
+        <span class="stat-sub">Par Face Value: {{ bond.face_value|inr }}</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Yield to Maturity (YTM)</span>
+        <span class="stat-value" style="color: #10B981;">{{ bond.current_ytm|pct }}</span>
+        <span class="stat-sub">Current Yield: {{ bond.current_yield|pct }}</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Accrued Interest (Per Unit)</span>
+        <span class="stat-value" style="color: #38BDF8;">{{ bond.accrued_interest|inr }}</span>
+        <span class="stat-sub">Dirty (Settlement) Price: {{ bond.dirty_price|inr }}</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Annual Coupon Rate</span>
+        <span class="stat-value">{{ bond.coupon_rate|pct }}</span>
+        <span class="stat-sub">Payout Frequency: {{ bond.coupon_frequency }}</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Modified Duration</span>
+        <span class="stat-value" style="color: var(--gold-primary);">{{ bond.modified_duration }} yrs</span>
+        <span class="stat-sub">Sensitivity: ~{{ bond.modified_duration }}% per 100 bps shift</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Maturity Date</span>
+        <span class="stat-value" style="font-size: 20px;">{{ bond.maturity_date }}</span>
+        <span class="stat-sub">Issue Date: {{ bond.issue_date }}</span>
+    </div>
+</div>
+
+<!-- Explainer & Key Risks Cards -->
+<div class="grid-2" style="margin-bottom: 24px;">
+    <div class="card" style="border-left: 4px solid var(--gold-primary);">
+        <h3 style="font-size: 17px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span>ℹ️</span> Plain-Language: What is this Bond?
+        </h3>
+        <p style="color: var(--text-muted); font-size: 14px; line-height: 1.7;">
+            {{ bond.explainer or "This security represents a fixed-income debt instrument issued under standard SEBI/RBI regulations. The bondholder receives recurring interest coupons based on the coupon schedule and full principal redemption at maturity." }}
+        </p>
+        <div style="margin-top: 14px; display: flex; gap: 16px; font-size: 13px; color: var(--text-dim);">
+            <div>Security: <strong>{% if bond.is_secured %}Senior Secured{% else %}Unsecured Subordinated{% endif %}</strong></div>
+            <div>Structure: <strong>{% if bond.is_callable %}Callable{% elif bond.is_puttable %}Puttable{% else %}Plain Vanilla Bullet{% endif %}</strong></div>
+            <div>Lot Size: <strong>{{ bond.min_lot_size }} Units</strong></div>
+        </div>
+    </div>
+
+    <div class="card" style="border-left: 4px solid #EF4444;">
+        <h3 style="font-size: 17px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+            <span>⚠️</span> Key Investment Risks
+        </h3>
+        <p style="color: var(--text-muted); font-size: 14px; line-height: 1.7;">
+            {{ bond.risk_profile or "Subject to interest rate risk proportional to duration, credit downgrade risk, and secondary market liquidity risk." }}
+        </p>
+        <div style="margin-top: 14px; font-size: 12px; color: var(--text-dim);">
+            Note: Holding until maturity immunizes against secondary market price volatility.
+        </div>
+    </div>
+</div>
+
+<!-- Charts Section: Price/Yield History & Cash Flow Chart -->
+<div class="grid-2" style="margin-bottom: 24px;">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">2-Year Price & Yield History</h3>
+            <span style="font-size: 12px; color: var(--text-dim);">Clean Price (INR)</span>
+        </div>
+        <div style="height: 260px;">
+            <canvas id="historyChart"></canvas>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Cash Flow Schedule (Coupons & Principal)</h3>
+            <span style="font-size: 12px; color: var(--text-dim);">Expected Inflows</span>
+        </div>
+        <div style="height: 260px;">
+            <canvas id="cashflowChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Secondary Order Book & Cash Flow Schedule Table -->
+<div class="grid-2" style="margin-bottom: 28px;">
+    <!-- Simulated 5-Level Secondary Order Book -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Simulated Secondary Order Book</h3>
+            <span class="market-status-badge market-open">Level-2 Depth (5)</span>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <!-- Bids Column -->
+            <div>
+                <div style="font-weight: 600; font-size: 13px; color: #10B981; margin-bottom: 8px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px;">
+                    BUY ORDERS (BIDS)
+                </div>
+                <table style="width: 100%; font-size: 13px;">
+                    <thead>
+                        <tr style="color: var(--text-dim); font-size: 11px;">
+                            <th>QTY</th>
+                            <th style="text-align: right;">PRICE</th>
+                            <th style="text-align: right;">YIELD</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for b in order_book.bids %}
+                        <tr>
+                            <td style="color: var(--text-muted);">{{ b.qty }}</td>
+                            <td style="text-align: right; color: #10B981; font-weight: 600;">₹{{ "%.2f"|format(b.price) }}</td>
+                            <td style="text-align: right; color: var(--text-dim);">{{ "%.2f"|format(b.yield * 100) }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Asks Column -->
+            <div>
+                <div style="font-weight: 600; font-size: 13px; color: #EF4444; margin-bottom: 8px; border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px;">
+                    SELL ORDERS (ASKS)
+                </div>
+                <table style="width: 100%; font-size: 13px;">
+                    <thead>
+                        <tr style="color: var(--text-dim); font-size: 11px;">
+                            <th>PRICE</th>
+                            <th style="text-align: right;">QTY</th>
+                            <th style="text-align: right;">YIELD</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in order_book.asks %}
+                        <tr>
+                            <td style="color: #EF4444; font-weight: 600;">₹{{ "%.2f"|format(a.price) }}</td>
+                            <td style="text-align: right; color: var(--text-muted);">{{ a.qty }}</td>
+                            <td style="text-align: right; color: var(--text-dim);">{{ "%.2f"|format(a.yield * 100) }}%</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div style="margin-top: 16px; padding-top: 10px; border-top: 1px solid var(--border-subtle); font-size: 12px; color: var(--text-dim); text-align: center;">
+            Settlement Cycle: <strong>T+1 Rolling Settlement</strong> through Clearing Corporation
+        </div>
+    </div>
+
+    <!-- Complete Cash Flow Table -->
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Future Cash Flow Table</h3>
+            <span style="font-size: 12px; color: var(--text-dim);">Per Unit (₹)</span>
+        </div>
+        <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+            <table class="bb-table" style="font-size: 13px;">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Coupon</th>
+                        <th>Principal</th>
+                        <th>Total Inflow</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for s in schedule %}
+                    <tr>
+                        <td style="font-weight: 500;">{{ s.payment_date }}</td>
+                        <td>{{ s.coupon_amount|inr }}</td>
+                        <td>{{ s.principal_repayment|inr }}</td>
+                        <td style="font-weight: 600; color: {% if s.is_maturity %}var(--gold-primary){% else %}var(--text-main){% endif %};">
+                            {{ s.total_cash_flow|inr }}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Order Placement Modal -->
+<div id="tradeModal" class="modal-overlay">
+    <div class="modal-content">
+        <button class="modal-close" onclick="closeModal('tradeModal')">✕</button>
+        <h2 id="modalTitle" style="font-size: 20px; margin-bottom: 4px;">Place Order</h2>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">
+            {{ bond.name }} • <span style="color: var(--gold-primary);">{{ bond.isin }}</span>
+        </p>
+
+        <form method="POST" action="/order/place" id="tradeForm">
+            <input type="hidden" name="isin" value="{{ bond.isin }}">
+            <input type="hidden" name="side" id="orderSideInput" value="BUY">
+
+            <div class="form-group">
+                <label class="form-label">Order Type</label>
+                <div style="display: flex; gap: 10px;">
+                    <label style="flex: 1; padding: 10px; background: var(--bg-main); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); text-align: center; cursor: pointer;">
+                        <input type="radio" name="order_type" value="MARKET" checked onchange="toggleOrderType('MARKET')"> Market Price
+                    </label>
+                    <label style="flex: 1; padding: 10px; background: var(--bg-main); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); text-align: center; cursor: pointer;">
+                        <input type="radio" name="order_type" value="LIMIT" onchange="toggleOrderType('LIMIT')"> Limit Price/Yield
+                    </label>
+                </div>
+            </div>
+
+            <div id="limitFields" style="display: none;" class="grid-2">
+                <div class="form-group">
+                    <label class="form-label">Limit Clean Price (₹)</label>
+                    <input type="number" step="0.05" name="limit_price" id="limitPriceInput" class="form-control" value="{{ bond.clean_price }}" oninput="calculateTotal()">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Limit Yield (YTM %)</label>
+                    <input type="number" step="0.01" name="limit_yield" id="limitYieldInput" class="form-control" placeholder="e.g. 7.85">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Quantity / Lots (Min lot: {{ bond.min_lot_size }} units)</label>
+                <input type="number" name="units" id="orderUnitsInput" class="form-control" min="{{ bond.min_lot_size }}" step="{{ bond.min_lot_size }}" value="{{ bond.min_lot_size }}" required oninput="calculateTotal()">
+            </div>
+
+            <!-- Real-time Settlement Breakdown Card -->
+            <div style="background: var(--bg-main); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 14px; margin: 16px 0; font-size: 13px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                    <span style="color: var(--text-dim);">Clean Price Principal:</span>
+                    <span id="breakdownClean">₹0.00</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                    <span style="color: var(--text-dim);">Accrued Interest:</span>
+                    <span id="breakdownAccrued">₹0.00</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                    <span style="color: var(--text-dim);">Stamp Duty (0.015%) + Exchange Fee (₹25):</span>
+                    <span id="breakdownCharges">₹25.00</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid var(--border-subtle); font-weight: 700; font-size: 15px; color: var(--gold-primary);">
+                    <span>Total Consideration:</span>
+                    <span id="breakdownTotal">₹0.00</span>
+                </div>
+                <div style="font-size: 11px; color: var(--text-dim); margin-top: 6px; text-align: right;">
+                    Settlement Date: <strong>T+1 (Tomorrow)</strong>
+                </div>
+            </div>
+
+            <button type="submit" id="submitOrderBtn" class="btn btn-primary" style="width: 100%;">
+                Confirm & Execute Order
+            </button>
+        </form>
+    </div>
+</div>
+
+<script>
+const CLEAN_PRICE = {{ bond.clean_price }};
+const ACCRUED_INT = {{ bond.accrued_interest }};
+const MIN_LOT = {{ bond.min_lot_size }};
+
+function openTradeModal(side) {
+    document.getElementById("orderSideInput").value = side;
+    document.getElementById("modalTitle").innerText = (side === 'BUY' ? 'Buy ' : 'Sell ') + 'Bond in Secondary Market';
+    const btn = document.getElementById("submitOrderBtn");
+    btn.className = side === 'BUY' ? 'btn btn-primary' : 'btn btn-danger';
+    btn.innerText = 'Confirm ' + side + ' Order';
+    calculateTotal();
+    openModal('tradeModal');
+}
+
+function toggleOrderType(type) {
+    const el = document.getElementById("limitFields");
+    el.style.display = (type === 'LIMIT') ? 'grid' : 'none';
+    calculateTotal();
+}
+
+function calculateTotal() {
+    const units = parseInt(document.getElementById("orderUnitsInput").value) || 0;
+    const isLimit = document.querySelector('input[name="order_type"]:checked').value === 'LIMIT';
+    let price = CLEAN_PRICE;
+    if (isLimit) {
+        const lp = parseFloat(document.getElementById("limitPriceInput").value);
+        if (!isNaN(lp) && lp > 0) price = lp;
+    }
+
+    const cleanTotal = price * units;
+    const accruedTotal = ACCRUED_INT * units;
+    const stampDuty = cleanTotal * 0.00015;
+    const charges = stampDuty + 25.0;
+    const total = cleanTotal + accruedTotal + charges;
+
+    document.getElementById("breakdownClean").innerText = formatINR(cleanTotal);
+    document.getElementById("breakdownAccrued").innerText = formatINR(accruedTotal);
+    document.getElementById("breakdownCharges").innerText = formatINR(charges);
+    document.getElementById("breakdownTotal").innerText = formatINR(total);
+}
+
+// Chart.js initialization
+document.addEventListener("DOMContentLoaded", () => {
+    // History Chart
+    const historyCtx = document.getElementById('historyChart').getContext('2d');
+    new Chart(historyCtx, {
+        type: 'line',
+        data: {
+            labels: {{ history_dates | tojson }},
+            datasets: [{
+                label: 'Clean Price (₹)',
+                data: {{ history_prices | tojson }},
+                borderColor: '#D4AF37',
+                backgroundColor: 'rgba(212, 175, 55, 0.08)',
+                borderWidth: 2,
+                fill: true,
+                tension: 0.2,
+                pointRadius: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: '#94A3B8' } },
+                y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94A3B8' } }
+            }
+        }
+    });
+
+    // Cashflow Chart
+    const cfCtx = document.getElementById('cashflowChart').getContext('2d');
+    new Chart(cfCtx, {
+        type: 'bar',
+        data: {
+            labels: {{ cf_labels | tojson }},
+            datasets: [{
+                label: 'Cash Flow (₹)',
+                data: {{ cf_values | tojson }},
+                backgroundColor: '#38BDF8',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#94A3B8', maxRotation: 45 } },
+                y: { grid: { color: 'rgba(255,255,255,0.06)' }, ticks: { color: '#94A3B8' } }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

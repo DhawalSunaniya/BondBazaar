@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Income Calendar & Cash Flow Schedule | BondBazaar{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+        <h1 style="font-size: 26px;">Expected Income Calendar</h1>
+        <p style="color: var(--text-muted); font-size: 14px;">Projected monthly coupon credits and principal redemptions.</p>
+    </div>
+    <a href="/holdings" class="btn btn-secondary">View Portfolio Positions</a>
+</div>
+
+<!-- Monthly Income Chart -->
+<div class="card card-gold-glow" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2 class="card-title">Projected Monthly Inflow (Next 12 Months)</h2>
+        <span style="font-size: 12px; color: var(--gold-primary); font-weight: 600;">Automated Bank Credits</span>
+    </div>
+    <div style="height: 280px;">
+        <canvas id="monthlyIncomeChart"></canvas>
+    </div>
+</div>
+
+<!-- Scheduled Cash Flow Events List -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Detailed Upcoming Payout Schedule</h2>
+        <span style="font-size: 13px; color: var(--text-dim);">Showing next {{ events|length }} scheduled events</span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="bb-table">
+            <thead>
+                <tr>
+                    <th>Payout Date</th>
+                    <th>Type</th>
+                    <th>Security Name</th>
+                    <th>ISIN</th>
+                    <th>Expected Credit Amount</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ev in events %}
+                <tr>
+                    <td style="font-weight: 600;">{{ ev.date }}</td>
+                    <td>
+                        {% if 'MATURITY' in ev.event_type %}
+                        <span class="badge badge-sovereign">PRINCIPAL REDEMPTION</span>
+                        {% else %}
+                        <span class="badge badge-aaa">COUPON INTEREST</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <a href="/bonds/{{ ev.isin }}" style="font-weight: 600;">{{ ev.instrument_name }}</a>
+                    </td>
+                    <td style="font-size: 12px; color: var(--text-dim);">{{ ev.isin }}</td>
+                    <td style="font-weight: 700; color: {% if 'MATURITY' in ev.event_type %}var(--gold-primary){% else %}#10B981{% endif %}; font-size: 15px;">
+                        {{ ev.amount|inr }}
+                    </td>
+                    <td>
+                        <span class="badge badge-type">SCHEDULED</span>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center; padding: 30px; color: var(--text-muted);">
+                        No upcoming cash flows found. Acquire bonds to build your recurring income stream.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const ctx = document.getElementById('monthlyIncomeChart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: {{ chart_months | tojson }},
+            datasets: [{
+                label: 'Projected Monthly Inflow (₹)',
+                data: {{ chart_incomes | tojson }},
+                backgroundColor: 'rgba(212, 175, 55, 0.85)',
+                borderColor: '#D4AF37',
+                borderWidth: 1,
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return ' Inflow: ' + formatINR(context.raw);
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#94A3B8' } },
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.06)' },
+                    ticks: {
+                        color: '#94A3B8',
+                        callback: function(val) { return '₹' + val.toLocaleString('en-IN'); }
+                    }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

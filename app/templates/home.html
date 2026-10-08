@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard | BondBazaar{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+        <h1 style="font-size: 26px;">Portfolio Overview</h1>
+        <p style="color: var(--text-muted); font-size: 14px;">Welcome back, {{ user.full_name }} • Demat: {{ user.demat_account_masked }}</p>
+    </div>
+    <div style="display: flex; gap: 10px;">
+        <a href="/marketplace" class="btn btn-primary">🔍 Explore Bonds</a>
+        <a href="/wallet" class="btn btn-secondary">₹ Wallet: {{ user.wallet_balance|inr }}</a>
+    </div>
+</div>
+
+<!-- Primary Stats Grid -->
+<div class="grid-4" style="margin-bottom: 24px;">
+    <div class="stat-card">
+        <span class="stat-label">Total Invested</span>
+        <span class="stat-value">{{ summary.total_invested|inr }}</span>
+        <span class="stat-sub">Across {{ summary.holdings_count }} Instruments</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Current Valuation</span>
+        <span class="stat-value" style="color: var(--gold-primary);">{{ summary.current_value|inr }}</span>
+        <span class="stat-sub" style="color: {% if summary.pnl >= 0 %}var(--success){% else %}var(--danger){% endif %}; font-weight: 600;">
+            {% if summary.pnl >= 0 %}+{% endif %}{{ summary.pnl|inr }} ({{ summary.pnl_pct }}%)
+        </span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Accrued Interest (Till Today)</span>
+        <span class="stat-value" style="color: #38BDF8;">{{ summary.accrued_interest|inr }}</span>
+        <span class="stat-sub">Daily actual/365 accrual</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-label">Weighted Portfolio YTM</span>
+        <span class="stat-value" style="color: #10B981;">{{ summary.portfolio_ytm }}%</span>
+        <span class="stat-sub">Effective annual yield</span>
+    </div>
+</div>
+
+<!-- Next Coupon & Next Maturity Banners -->
+<div class="grid-2" style="margin-bottom: 28px;">
+    <div class="card" style="display: flex; align-items: center; gap: 18px; border-left: 4px solid var(--gold-primary);">
+        <div style="font-size: 32px;">📅</div>
+        <div>
+            <div style="font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Next Scheduled Coupon Payout</div>
+            {% if summary.next_coupon %}
+            <div style="font-size: 18px; font-weight: 700; color: var(--gold-primary); margin: 2px 0;">
+                {{ summary.next_coupon.amount|inr }} on {{ summary.next_coupon.date }}
+            </div>
+            <div style="font-size: 13px; color: var(--text-muted);">{{ summary.next_coupon.instrument_name }}</div>
+            {% else %}
+            <div style="font-size: 15px; color: var(--text-muted); margin-top: 4px;">No immediate coupon payouts due.</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card" style="display: flex; align-items: center; gap: 18px; border-left: 4px solid #38BDF8;">
+        <div style="font-size: 32px;">🏛️</div>
+        <div>
+            <div style="font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px;">Earliest Maturing Principal</div>
+            {% if summary.next_maturity %}
+            <div style="font-size: 18px; font-weight: 700; color: #38BDF8; margin: 2px 0;">
+                {{ summary.next_maturity.amount|inr }} on {{ summary.next_maturity.date }}
+            </div>
+            <div style="font-size: 13px; color: var(--text-muted);">{{ summary.next_maturity.instrument_name }}</div>
+            {% else %}
+            <div style="font-size: 15px; color: var(--text-muted); margin-top: 4px;">No upcoming maturities.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Featured High-Yield Bonds Section -->
+<div class="card" style="margin-bottom: 28px;">
+    <div class="card-header">
+        <h2 class="card-title">Institutional Marketplace Picks</h2>
+        <a href="/marketplace" class="btn btn-secondary btn-sm">View All 30+ Instruments →</a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="bb-table">
+            <thead>
+                <tr>
+                    <th>Security / ISIN</th>
+                    <th>Type</th>
+                    <th>Rating</th>
+                    <th>Coupon Rate</th>
+                    <th>Frequency</th>
+                    <th>Indicative Clean Price</th>
+                    <th>YTM</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in featured_bonds %}
+                <tr>
+                    <td>
+                        <a href="/bonds/{{ b.isin }}" style="font-weight: 600; font-size: 14px;">{{ b.name }}</a>
+                        <div style="font-size: 12px; color: var(--text-dim);">{{ b.isin }} • {{ b.issuer_name }}</div>
+                    </td>
+                    <td><span class="badge badge-type">{{ b.instrument_type }}</span></td>
+                    <td>
+                        {% if 'SOVEREIGN' in b.credit_rating %}
+                        <span class="badge badge-sovereign">SOVEREIGN</span>
+                        {% elif 'AAA' in b.credit_rating %}
+                        <span class="badge badge-aaa">AAA</span>
+                        {% elif 'AA' in b.credit_rating %}
+                        <span class="badge badge-aa">{{ b.credit_rating }}</span>
+                        {% else %}
+                        <span class="badge badge-a">{{ b.credit_rating }}</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-weight: 600;">{{ b.coupon_rate|pct }}</td>
+                    <td style="font-size: 13px; color: var(--text-muted);">{{ b.coupon_frequency }}</td>
+                    <td style="font-weight: 700;">{{ b.clean_price|inr }}</td>
+                    <td style="color: #10B981; font-weight: 700; font-size: 15px;">{{ b.current_ytm|pct }}</td>
+                    <td>
+                        <a href="/bonds/{{ b.isin }}" class="btn btn-primary btn-sm">Trade / Details</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Recent Orders Activity -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Recent Order Book Executions</h2>
+        <a href="/orders" class="btn btn-secondary btn-sm">View Full History</a>
+    </div>
+    {% if recent_orders %}
+    <div class="table-responsive">
+        <table class="bb-table">
+            <thead>
+                <tr>
+                    <th>Order ID</th>
+                    <th>Side</th>
+                    <th>Bond Name</th>
+                    <th>Units</th>
+                    <th>Executed Clean Price</th>
+                    <th>Total Consideration</th>
+                    <th>Settlement</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for ord in recent_orders %}
+                <tr>
+                    <td style="font-family: monospace; font-size: 13px;">{{ ord.order_id }}</td>
+                    <td>
+                        <span class="badge {% if ord.side == 'BUY' %}badge-aaa{% else %}badge-a{% endif %}">
+                            {{ ord.side }}
+                        </span>
+                    </td>
+                    <td>{{ ord.instrument.name }}</td>
+                    <td>{{ ord.units }}</td>
+                    <td>{{ ord.execution_price|inr }}</td>
+                    <td style="font-weight: 600;">{{ ord.total_consideration|inr }}</td>
+                    <td style="font-size: 13px;">{{ ord.settlement_date }}</td>
+                    <td>
+                        <span class="badge badge-aaa">{{ ord.status }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div style="text-align: center; padding: 24px; color: var(--text-muted);">
+        No recent orders executed yet. Explore the marketplace to place a trade.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

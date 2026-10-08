@@ -1,0 +1,207 @@
+{% extends "base.html" %}
+
+{% block title %}Portfolio Risk & Insights | BondBazaar{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+        <h1 style="font-size: 26px;">Portfolio Risk & Concentration Analytics</h1>
+        <p style="color: var(--text-muted); font-size: 14px;">Automated prudential risk warnings, credit breakdown, and issuer concentration metrics.</p>
+    </div>
+    <div style="font-size: 13px; color: var(--gold-primary); font-weight: 600;">
+        Portfolio Assets: {{ total_val|inr }}
+    </div>
+</div>
+
+<!-- Risk Warnings Section -->
+{% if risk_warnings %}
+<div style="margin-bottom: 24px;">
+    {% for w in risk_warnings %}
+    <div class="alert {% if w.severity == 'CRITICAL' %}alert-danger{% else %}alert-warning{% endif %}">
+        <span style="font-size: 22px;">⚠️</span>
+        <div>
+            <div style="font-weight: 700; font-size: 14px; margin-bottom: 2px;">{{ w.title }}</div>
+            <div style="font-size: 13px;">{{ w.detail }}</div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-success" style="margin-bottom: 24px;">
+    <span>🛡️</span>
+    <div>
+        <strong>Prudential Guidelines Met:</strong> Your portfolio meets all conservative issuer limits (<25%) and maintains high credit quality (<30% below AA).
+    </div>
+</div>
+{% endif %}
+
+<!-- Analytics Charts Grid -->
+<div class="grid-3" style="margin-bottom: 28px;">
+    <!-- Asset Class Doughnut -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Allocation by Bond Type</h2>
+        </div>
+        <div style="height: 240px; position: relative;">
+            <canvas id="typeChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Rating Bucket Doughnut -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Credit Rating Distribution</h2>
+        </div>
+        <div style="height: 240px; position: relative;">
+            <canvas id="ratingChart"></canvas>
+        </div>
+    </div>
+
+    <!-- Issuer Exposure Bar -->
+    <div class="card">
+        <div class="card-header">
+            <h2 class="card-title">Issuer Concentration (%)</h2>
+        </div>
+        <div style="height: 240px; position: relative;">
+            <canvas id="issuerChart"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Detailed Allocation Tables -->
+<div class="grid-2">
+    <div class="card">
+        <h2 style="font-size: 16px; margin-bottom: 14px;">Issuer Allocation Table</h2>
+        <table class="bb-table" style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>Issuer Name</th>
+                    <th style="text-align: right;">Valuation</th>
+                    <th style="text-align: right;">Weight (%)</th>
+                    <th>Prudential Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for issuer, val in zip(issuer_labels, issuer_values) if total_val > 0 %}
+                {% set pct = (val / total_val * 100.0) %}
+                <tr>
+                    <td style="font-weight: 600;">{{ issuer }}</td>
+                    <td style="text-align: right;">{{ val|inr }}</td>
+                    <td style="text-align: right; font-weight: 700;">{{ "%.1f"|format(pct) }}%</td>
+                    <td>
+                        {% if pct > 25.0 %}
+                        <span class="badge badge-a">OVERLIMIT (>25%)</span>
+                        {% else %}
+                        <span class="badge badge-aaa">COMPLIANT</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4" style="text-align: center; color: var(--text-muted);">No assets in portfolio.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="card">
+        <h2 style="font-size: 16px; margin-bottom: 14px;">Credit Quality Matrix</h2>
+        <table class="bb-table" style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>Rating Category</th>
+                    <th style="text-align: right;">Amount</th>
+                    <th style="text-align: right;">Weight (%)</th>
+                    <th>Risk Grade</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for grade, val in zip(rating_labels, rating_values) if total_val > 0 %}
+                {% set pct = (val / total_val * 100.0) %}
+                <tr>
+                    <td style="font-weight: 600;">{{ grade }}</td>
+                    <td style="text-align: right;">{{ val|inr }}</td>
+                    <td style="text-align: right; font-weight: 700;">{{ "%.1f"|format(pct) }}%</td>
+                    <td>
+                        {% if grade == 'Sovereign' %}
+                        <span class="badge badge-sovereign">ZERO DEFAULT</span>
+                        {% elif grade == 'AAA' %}
+                        <span class="badge badge-aaa">HIGHEST SAFETY</span>
+                        {% elif grade == 'AA' %}
+                        <span class="badge badge-aa">HIGH SAFETY</span>
+                        {% else %}
+                        <span class="badge badge-a">MODERATE CREDIT RISK</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    // Type Chart
+    new Chart(document.getElementById('typeChart'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ type_labels | tojson }},
+            datasets: [{
+                data: {{ type_values | tojson }},
+                backgroundColor: ['#D4AF37', '#38BDF8', '#10B981', '#F59E0B', '#A855F7', '#EC4899'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#94A3B8', boxWidth: 10, font: { size: 10 } } } }
+        }
+    });
+
+    // Rating Chart
+    new Chart(document.getElementById('ratingChart'), {
+        type: 'doughnut',
+        data: {
+            labels: {{ rating_labels | tojson }},
+            datasets: [{
+                data: {{ rating_values | tojson }},
+                backgroundColor: ['#38BDF8', '#10B981', '#F59E0B', '#EF4444'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#94A3B8', boxWidth: 10, font: { size: 10 } } } }
+        }
+    });
+
+    // Issuer Chart
+    new Chart(document.getElementById('issuerChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ issuer_labels | tojson }},
+            datasets: [{
+                label: 'Exposure (₹)',
+                data: {{ issuer_values | tojson }},
+                backgroundColor: '#D4AF37',
+                borderRadius: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#94A3B8', font: { size: 9 } } },
+                y: { grid: { display: false }, ticks: { color: '#94A3B8', font: { size: 9 } } }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

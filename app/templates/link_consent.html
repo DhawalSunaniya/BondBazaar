@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Authorize App Connection | BondBazaar Link</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/app.js" defer></script>
+</head>
+<body style="background: radial-gradient(circle at 50% 20%, #0F1B38 0%, #060B18 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;">
+
+<div style="max-width: 480px; width: 100%;">
+    <div class="card card-gold-glow" style="padding: 32px;">
+        <!-- Header -->
+        <div style="text-align: center; margin-bottom: 24px;">
+            <div class="brand-logo-icon" style="margin: 0 auto 12px auto; width: 48px; height: 48px; font-size: 26px;">B</div>
+            <h1 style="font-size: 22px;">BondBazaar Link</h1>
+            <p style="color: var(--text-muted); font-size: 13px; margin-top: 4px;">Secure Account Aggregation Authorization</p>
+        </div>
+
+        {% if error_message %}
+        <div class="alert alert-danger">{{ error_message }}</div>
+        {% endif %}
+        {% if success_message %}
+        <div class="alert alert-success">{{ success_message }}</div>
+        {% endif %}
+
+        {% if authorization_complete %}
+        <!-- Authorization Complete Screen -->
+        <div style="text-align: center;">
+            <div style="font-size: 48px; margin-bottom: 12px;">✅</div>
+            <h2 style="font-size: 18px; margin-bottom: 8px;">Access Authorized!</h2>
+            <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 20px;">
+                You have authorized <strong>{{ client_name }}</strong> to access your selected BondBazaar data.
+            </p>
+
+            <div style="background: var(--bg-main); border: 1px solid var(--border-subtle); padding: 12px; border-radius: var(--radius-sm); font-size: 12px; text-align: left; margin-bottom: 20px;">
+                <div>Public Token: <code style="color: var(--gold-primary);">{{ public_token }}</code></div>
+                <div>Link Session: <code style="color: #38BDF8;">{{ link_session }}</code></div>
+            </div>
+
+            <a href="{{ redirect_url }}" class="btn btn-primary" style="width: 100%;">
+                Return to {{ client_name }} →
+            </a>
+            <p style="font-size: 11px; color: var(--text-dim); margin-top: 10px;">
+                Redirecting to: {{ redirect_url }}
+            </p>
+        </div>
+
+        {% elif not user %}
+        <!-- Step 1: Sign in with Email + OTP -->
+        <div style="border-bottom: 1px solid var(--border-subtle); padding-bottom: 16px; margin-bottom: 20px;">
+            <div style="font-size: 14px; font-weight: 600; color: var(--text-main);">
+                Step 1: Sign In to Your BondBazaar Account
+            </div>
+            <div style="font-size: 12px; color: var(--text-dim);">
+                Authenticate to approve data sharing with <strong>{{ client_name }}</strong>
+            </div>
+        </div>
+
+        {% if not otp_sent %}
+        <form method="POST" action="/link/send-otp">
+            <input type="hidden" name="token" value="{{ token }}">
+            <div class="form-group">
+                <label class="form-label">Registered Email</label>
+                <input type="email" name="email" class="form-control" placeholder="name@example.com" value="{{ email or '' }}" required autofocus>
+                <small style="color: var(--text-dim); font-size: 11px; margin-top: 4px; display: block;">
+                    Demo users: <code>aarav.mehta@example.com</code> or <code>priya.nair@example.com</code>
+                </small>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Request OTP</button>
+        </form>
+        {% else %}
+        <form method="POST" action="/link/verify-login">
+            <input type="hidden" name="token" value="{{ token }}">
+            <input type="hidden" name="email" value="{{ email }}">
+            <div class="form-group">
+                <label class="form-label">6-Digit OTP</label>
+                <input type="text" name="otp" class="form-control" placeholder="123456" maxlength="6" value="123456" required autofocus style="letter-spacing: 4px; font-size: 18px; text-align: center;">
+                <small style="color: var(--gold-primary); font-size: 12px; margin-top: 4px; display: block;">
+                    Demo OTP is preset to <strong>123456</strong>
+                </small>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Verify & Continue</button>
+        </form>
+        {% endif %}
+
+        {% else %}
+        <!-- Step 2: Consent Screen -->
+        <div style="text-align: center; margin-bottom: 20px;">
+            <div style="display: inline-flex; align-items: center; gap: 8px; background: rgba(212, 175, 55, 0.1); border: 1px solid var(--border-color); padding: 6px 14px; border-radius: var(--radius-full); font-size: 13px;">
+                <span style="color: var(--gold-primary); font-weight: 700;">{{ client_name }}</span>
+                <span style="color: var(--text-dim);">requests access</span>
+            </div>
+        </div>
+
+        <div style="background: var(--bg-main); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 20px;">
+            <div style="font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px;">Connecting Account:</div>
+            <div style="font-weight: 700; font-size: 15px;">{{ user.full_name }}</div>
+            <div style="font-size: 12px; color: var(--text-muted);">Customer ID: {{ user.customer_id }} • Demat: {{ user.demat_account_masked }}</div>
+        </div>
+
+        <div style="margin-bottom: 20px;">
+            <div style="font-size: 13px; font-weight: 600; margin-bottom: 10px; color: var(--text-main);">Requested Scopes & Permissions:</div>
+            <ul style="list-style: none; display: flex; flex-direction: column; gap: 10px;">
+                {% for scope in scopes %}
+                <li style="display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--text-muted);">
+                    <span style="color: #10B981; font-weight: 700;">✓</span>
+                    <div>
+                        <strong style="color: var(--text-main); text-transform: capitalize;">{{ scope }}</strong>:
+                        {% if scope == 'holdings' %}Read demat bond positions, valuations, and coupon schedules.
+                        {% elif scope == 'profile' %}Access name, verified PAN, and demat coordinates.
+                        {% elif scope == 'transactions' %}Read secondary market trade confirmations.
+                        {% else %}General account data access.{% endif %}
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+
+        <div style="background: rgba(56, 189, 248, 0.08); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: var(--radius-sm); padding: 12px; font-size: 12px; color: #38BDF8; margin-bottom: 24px;">
+            ⏳ Consent Duration: <strong>90 Days</strong>. No refresh tokens are issued. You can revoke access at any time from your BondBazaar Profile.
+        </div>
+
+        <form method="POST" action="/link/authorize">
+            <input type="hidden" name="token" value="{{ token }}">
+            <div style="display: flex; gap: 12px;">
+                <button type="submit" name="action" value="deny" class="btn btn-secondary" style="flex: 1;">Deny</button>
+                <button type="submit" name="action" value="allow" class="btn btn-primary" style="flex: 2;">Allow Access</button>
+            </div>
+        </form>
+        {% endif %}
+
+        <div style="text-align: center; margin-top: 24px; font-size: 11px; color: var(--text-dim);">
+            Protected by BondBazaar RBI/SEBI Compliant Open API Protocol
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

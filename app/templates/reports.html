@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}Tax & Statements Reports | BondBazaar{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+        <h1 style="font-size: 26px;">Financial & Tax Statements</h1>
+        <p style="color: var(--text-muted); font-size: 14px;">Audit-ready income tax certificates, transaction ledgers, and TDS Form 26AS summaries.</p>
+    </div>
+    <div style="font-size: 13px; color: var(--gold-primary); font-weight: 600;">
+        Customer: {{ user.customer_id }} • PAN: {{ user.pan_masked }}
+    </div>
+</div>
+
+<!-- Statement Download Cards -->
+<div class="grid-3" style="margin-bottom: 28px;">
+    <div class="card card-gold-glow">
+        <h2 style="font-size: 17px; margin-bottom: 8px;">📊 Interest Income Statement</h2>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+            Full breakdown of gross coupon payments credited to your account during FY 2026-27.
+        </p>
+        <div style="margin-bottom: 16px;">
+            <div style="font-size: 11px; color: var(--text-dim);">TOTAL INTEREST CREDITED</div>
+            <div style="font-size: 20px; font-weight: 700; color: #10B981;">{{ total_interest|inr }}</div>
+        </div>
+        <a href="/reports/export/interest" class="btn btn-primary" style="width: 100%;">
+            Download CSV Statement
+        </a>
+    </div>
+
+    <div class="card">
+        <h2 style="font-size: 17px; margin-bottom: 8px;">📑 Secondary Trade Book</h2>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+            Comprehensive capital gains and contract notes report for all secondary market trades.
+        </p>
+        <div style="margin-bottom: 16px;">
+            <div style="font-size: 11px; color: var(--text-dim);">SETTLEMENT CYCLES</div>
+            <div style="font-size: 15px; font-weight: 600;">T+1 Rolling Exchange Notes</div>
+        </div>
+        <a href="/reports/export/transactions" class="btn btn-secondary" style="width: 100%;">
+            Export Trades CSV
+        </a>
+    </div>
+
+    <div class="card">
+        <h2 style="font-size: 17px; margin-bottom: 8px;">🛡️ TDS Withholding Certificate</h2>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+            Simulated Section 193 TDS deductions (10% rate on corporate coupon interest above ₹5,000 threshold).
+        </p>
+        <div style="margin-bottom: 16px;">
+            <div style="font-size: 11px; color: var(--text-dim);">TDS DEDUCTED</div>
+            <div style="font-size: 20px; font-weight: 700; color: #EF4444;">{{ tds_deducted|inr }}</div>
+        </div>
+        <a href="/reports/export/tds" class="btn btn-secondary" style="width: 100%;">
+            Export TDS Summary CSV
+        </a>
+    </div>
+</div>
+
+<!-- Interest Income Preview Table -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Recent Coupon Credits Preview</h2>
+        <a href="/reports/export/interest" class="btn btn-secondary btn-sm">Download Full CSV</a>
+    </div>
+
+    <div class="table-responsive">
+        <table class="bb-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Security Reference</th>
+                    <th>Gross Coupon Interest</th>
+                    <th>TDS Deducted (10%)</th>
+                    <th>Net Credited to Wallet</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tx in coupon_txs %}
+                {% set tds = (tx.amount * 0.10) if tx.amount > 5000 else 0.0 %}
+                {% set net = tx.amount - tds %}
+                <tr>
+                    <td style="font-weight: 500;">{{ tx.created_at.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ tx.description }}</td>
+                    <td style="font-weight: 700; color: #10B981;">{{ tx.amount|inr }}</td>
+                    <td style="color: #EF4444;">{{ tds|inr }}</td>
+                    <td style="font-weight: 700; color: var(--gold-primary);">{{ net|inr }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 24px; color: var(--text-muted);">
+                        No interest payouts credited in this fiscal period.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Bond Marketplace | BondBazaar{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+        <h1 style="font-size: 26px;">Secondary Bond Marketplace</h1>
+        <p style="color: var(--text-muted); font-size: 14px;">Browse and trade 30+ institutional sovereign and corporate debt securities.</p>
+    </div>
+    <div style="font-size: 13px; color: var(--gold-primary); font-weight: 600;">
+        Showing {{ bonds|length }} instruments
+    </div>
+</div>
+
+<!-- Filter Controls Bar -->
+<div class="card" style="margin-bottom: 24px; padding: 18px;">
+    <form method="GET" action="/marketplace" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; align-items: flex-end;">
+        <div>
+            <label class="form-label">Instrument Type</label>
+            <select name="type" class="form-control">
+                <option value="ALL" {% if selected_type == 'ALL' %}selected{% endif %}>All Types</option>
+                <option value="GSEC" {% if selected_type == 'GSEC' %}selected{% endif %}>Government Securities (G-Sec)</option>
+                <option value="TBILL" {% if selected_type == 'TBILL' %}selected{% endif %}>Treasury Bills (T-Bills)</option>
+                <option value="SDL" {% if selected_type == 'SDL' %}selected{% endif %}>State Development Loans (SDL)</option>
+                <option value="SGB" {% if selected_type == 'SGB' %}selected{% endif %}>Sovereign Gold Bonds (SGB)</option>
+                <option value="CORPORATE_BOND" {% if selected_type == 'CORPORATE_BOND' %}selected{% endif %}>Corporate Bonds</option>
+                <option value="TAX_FREE_BOND" {% if selected_type == 'TAX_FREE_BOND' %}selected{% endif %}>Tax-Free Bonds</option>
+            </select>
+        </div>
+
+        <div>
+            <label class="form-label">Credit Rating</label>
+            <select name="rating" class="form-control">
+                <option value="ALL" {% if selected_rating == 'ALL' %}selected{% endif %}>All Ratings</option>
+                <option value="SOVEREIGN" {% if selected_rating == 'SOVEREIGN' %}selected{% endif %}>Sovereign</option>
+                <option value="AAA" {% if selected_rating == 'AAA' %}selected{% endif %}>AAA</option>
+                <option value="AA+" {% if selected_rating == 'AA+' %}selected{% endif %}>AA+</option>
+                <option value="AA" {% if selected_rating == 'AA' %}selected{% endif %}>AA</option>
+                <option value="AA-" {% if selected_rating == 'AA-' %}selected{% endif %}>AA-</option>
+                <option value="A+" {% if selected_rating == 'A+' %}selected{% endif %}>A+</option>
+                <option value="A" {% if selected_rating == 'A' %}selected{% endif %}>A</option>
+            </select>
+        </div>
+
+        <div>
+            <label class="form-label">Coupon Frequency</label>
+            <select name="frequency" class="form-control">
+                <option value="ALL" {% if selected_frequency == 'ALL' %}selected{% endif %}>All Frequencies</option>
+                <option value="ANNUAL" {% if selected_frequency == 'ANNUAL' %}selected{% endif %}>Annual</option>
+                <option value="SEMI_ANNUAL" {% if selected_frequency == 'SEMI_ANNUAL' %}selected{% endif %}>Semi-Annual</option>
+                <option value="MONTHLY" {% if selected_frequency == 'MONTHLY' %}selected{% endif %}>Monthly</option>
+                <option value="CUMULATIVE" {% if selected_frequency == 'CUMULATIVE' %}selected{% endif %}>Cumulative / Discount</option>
+            </select>
+        </div>
+
+        <div>
+            <label class="form-label">Min YTM (%)</label>
+            <input type="number" step="0.1" name="min_ytm" class="form-control" placeholder="e.g. 7.0" value="{{ min_ytm or '' }}">
+        </div>
+
+        <div>
+            <label class="form-label">Sort By</label>
+            <select name="sort" class="form-control">
+                <option value="ytm_desc" {% if selected_sort == 'ytm_desc' %}selected{% endif %}>Highest Yield (YTM)</option>
+                <option value="ytm_asc" {% if selected_sort == 'ytm_asc' %}selected{% endif %}>Lowest Yield (YTM)</option>
+                <option value="maturity_asc" {% if selected_sort == 'maturity_asc' %}selected{% endif %}>Maturity (Earliest First)</option>
+                <option value="maturity_desc" {% if selected_sort == 'maturity_desc' %}selected{% endif %}>Maturity (Furthest First)</option>
+                <option value="rating" {% if selected_sort == 'rating' %}selected{% endif %}>Credit Rating</option>
+            </select>
+        </div>
+
+        <div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Filter & Sort</button>
+        </div>
+    </form>
+</div>
+
+<!-- Bond Grid / Table -->
+<div class="card">
+    <div class="table-responsive">
+        <table class="bb-table">
+            <thead>
+                <tr>
+                    <th>Security Name & Issuer</th>
+                    <th>Type</th>
+                    <th>Credit Rating</th>
+                    <th>Coupon Rate</th>
+                    <th>Clean Price</th>
+                    <th>Accrued Int.</th>
+                    <th>YTM</th>
+                    <th>Maturity Date</th>
+                    <th>Min Lot Size</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for b in bonds %}
+                <tr>
+                    <td>
+                        <a href="/bonds/{{ b.isin }}" style="font-weight: 600; font-size: 14px;">{{ b.name }}</a>
+                        <div style="font-size: 12px; color: var(--text-dim); margin-top: 2px;">
+                            {{ b.isin }} • {{ b.issuer_name }}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge badge-type">{{ b.instrument_type }}</span>
+                    </td>
+                    <td>
+                        {% if 'SOVEREIGN' in b.credit_rating %}
+                        <span class="badge badge-sovereign">SOVEREIGN</span>
+                        {% elif 'AAA' in b.credit_rating %}
+                        <span class="badge badge-aaa">AAA</span>
+                        {% elif 'AA' in b.credit_rating %}
+                        <span class="badge badge-aa">{{ b.credit_rating }}</span>
+                        {% else %}
+                        <span class="badge badge-a">{{ b.credit_rating }}</span>
+                        {% endif %}
+                        <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">{{ b.rating_agency }}</div>
+                    </td>
+                    <td style="font-weight: 600;">
+                        {{ b.coupon_rate|pct }}
+                        <div style="font-size: 11px; color: var(--text-dim);">{{ b.coupon_frequency }}</div>
+                    </td>
+                    <td style="font-weight: 700; color: var(--text-main);">
+                        {{ b.clean_price|inr }}
+                    </td>
+                    <td style="font-size: 13px; color: #38BDF8;">
+                        {{ b.accrued_interest|inr }}
+                    </td>
+                    <td style="font-weight: 700; color: #10B981; font-size: 15px;">
+                        {{ b.current_ytm|pct }}
+                    </td>
+                    <td style="font-size: 13px; color: var(--text-muted);">
+                        {{ b.maturity_date }}
+                    </td>
+                    <td style="font-size: 13px;">
+                        {{ b.min_lot_size }} units
+                        <div style="font-size: 11px; color: var(--text-dim);">Min ₹{{ (b.face_value * b.min_lot_size)|inr(symbol=False) }}</div>
+                    </td>
+                    <td>
+                        <a href="/bonds/{{ b.isin }}" class="btn btn-primary btn-sm">Buy / View</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

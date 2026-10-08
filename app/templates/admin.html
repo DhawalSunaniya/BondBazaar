@@ -1,0 +1,467 @@
+{% extends "base.html" %}
+
+{% block title %}Sandbox Administration & Simulator Controls | BondBazaar{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-end;">
+    <div>
+        <h1 style="font-size: 26px;">Sandbox Simulator & Admin Console</h1>
+        <p style="color: var(--text-muted); font-size: 14px;">Trigger real-time financial market events, shock interest rates, test webhooks, and manage consent states.</p>
+    </div>
+    {% if is_logged_in %}
+    <form method="POST" action="/admin/logout">
+        <button type="submit" class="btn btn-secondary btn-sm">Admin Sign Out</button>
+    </form>
+    {% endif %}
+</div>
+
+{% if request.query_params.get('msg') %}
+<div class="alert alert-success">{{ request.query_params.get('msg') }}</div>
+{% endif %}
+
+{% if not is_logged_in %}
+<!-- Admin Login Card -->
+<div style="max-width: 440px; margin: 40px auto;">
+    <div class="card card-gold-glow">
+        <h2 style="font-size: 20px; text-align: center; margin-bottom: 8px;">Admin Authentication</h2>
+        <p style="color: var(--text-muted); font-size: 13px; text-align: center; margin-bottom: 20px;">
+            Default password: <code>admin123</code>
+        </p>
+
+        {% if error_message %}
+        <div class="alert alert-danger">{{ error_message }}</div>
+        {% endif %}
+
+        <form method="POST" action="/admin/login">
+            <div class="form-group">
+                <label class="form-label">Admin Master Password</label>
+                <input type="password" name="password" class="form-control" placeholder="Enter admin password" required autofocus>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Unlock Admin Dashboard</button>
+        </form>
+    </div>
+</div>
+
+{% else %}
+
+<!-- System State Status Bar -->
+<div class="card" style="margin-bottom: 24px; border-left: 4px solid var(--gold-primary);">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+        <div>
+            <div style="font-size: 12px; color: var(--text-dim); text-transform: uppercase;">10Y BENCHMARK YIELD:</div>
+            <div style="font-size: 22px; font-weight: 700; color: var(--gold-primary);">{{ "%.2f"|format(state.benchmark_yield * 100) }}%</div>
+        </div>
+        <div>
+            <div style="font-size: 12px; color: var(--text-dim); text-transform: uppercase;">MARKET STATE:</div>
+            <div>
+                {% if state.is_market_open %}
+                <span class="badge badge-aaa">LIVE / OPEN</span>
+                {% else %}
+                <span class="badge badge-a">CLOSED / FROZEN</span>
+                {% endif %}
+            </div>
+        </div>
+        <div>
+            <div style="font-size: 12px; color: var(--text-dim); text-transform: uppercase;">SIMULATED OUTAGE (503):</div>
+            <div>
+                {% if state.simulate_outage %}
+                <span class="badge badge-a">ACTIVE OUTAGE</span>
+                {% else %}
+                <span class="badge badge-aaa">NORMAL SERVICE</span>
+                {% endif %}
+            </div>
+        </div>
+        <div>
+            <div style="font-size: 12px; color: var(--text-dim); text-transform: uppercase;">LATENCY SIMULATOR (+5s):</div>
+            <div>
+                {% if state.slow_mode %}
+                <span class="badge badge-aa">SLOW (+5s)</span>
+                {% else %}
+                <span class="badge badge-aaa">INSTANT</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+            <form method="POST" action="/admin/toggle-market" style="display: inline;">
+                <button type="submit" class="btn btn-secondary btn-sm">Toggle Market Open/Close</button>
+            </form>
+            <form method="POST" action="/admin/toggle-outage" style="display: inline;">
+                <button type="submit" class="btn btn-secondary btn-sm" style="color: #EF4444;">Toggle 503 Outage</button>
+            </form>
+            <form method="POST" action="/admin/toggle-slow-mode" style="display: inline;">
+                <button type="submit" class="btn btn-secondary btn-sm">Toggle Slow Mode</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Controls Grid 1: Rate Shock & Issuer Downgrade -->
+<div class="grid-2" style="margin-bottom: 24px;">
+    <!-- Benchmark Rate Shock Control -->
+    <div class="card">
+        <h2 style="font-size: 18px; margin-bottom: 6px;">⚡ Global Benchmark Rate Shock</h2>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+            Instantly shift benchmark yields by +/- N basis points. Watch bond clean prices respond dynamically according to modified duration (longer duration bonds move more!).
+        </p>
+
+        <form method="POST" action="/admin/rate-shock">
+            <div class="form-group">
+                <label class="form-label">Basis Points Shift (e.g. +50 bps = +0.50% yield shift)</label>
+                <div style="display: flex; gap: 8px;">
+                    <input type="number" step="5" name="bps_shift" class="form-control" value="25" required>
+                    <button type="submit" class="btn btn-primary" style="white-space: nowrap;">Apply Shift</button>
+                </div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="document.querySelector('input[name=bps_shift]').value=50">+50 bps</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="document.querySelector('input[name=bps_shift]').value=-50">-50 bps</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="document.querySelector('input[name=bps_shift]').value=100">+100 bps</button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="document.querySelector('input[name=bps_shift]').value=-100">-100 bps</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Rating Downgrade Control -->
+    <div class="card">
+        <h2 style="font-size: 18px; margin-bottom: 6px;">📉 Apply Issuer Rating Downgrade</h2>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 16px;">
+            Downgrades an issuer's credit rating, widens its credit spread, drops bond prices, and triggers portfolio risk warnings.
+        </p>
+
+        <form method="POST" action="/admin/downgrade-issuer">
+            <div class="form-group">
+                <label class="form-label">Target Corporate Issuer</label>
+                <select name="issuer_name" class="form-control">
+                    <option value="Example Infra Finance Ltd">Example Infra Finance Ltd</option>
+                    <option value="Sunrise Housing Finance Ltd">Sunrise Housing Finance Ltd</option>
+                    <option value="Apex Renewable Power Ltd">Apex Renewable Power Ltd</option>
+                    <option value="Falcon Logistics Ltd">Falcon Logistics Ltd</option>
+                    <option value="Prism Health Infrastructure Ltd">Prism Health Infrastructure Ltd</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">New Credit Rating</label>
+                <div style="display: flex; gap: 8px;">
+                    <select name="new_rating" class="form-control">
+                        <option value="A">A (Triggers Sub-AA Warning)</option>
+                        <option value="BBB+">BBB+</option>
+                        <option value="AA-">AA-</option>
+                        <option value="AA">AA</option>
+                    </select>
+                    <button type="submit" class="btn btn-danger" style="white-space: nowrap;">Downgrade</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Controls Grid 2: Trade & Lifecycle Simulation (Fires Webhooks!) -->
+<div class="grid-3" style="margin-bottom: 24px;">
+    <!-- Simulate Trade -->
+    <div class="card">
+        <h3 style="font-size: 16px; margin-bottom: 6px;">🛒 Simulate Trade Execution</h3>
+        <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">
+            Executes a trade for a user and dispatches <code>HOLDINGS_UPDATED</code> webhook.
+        </p>
+
+        <form method="POST" action="/admin/simulate-trade">
+            <div class="form-group">
+                <label class="form-label" style="font-size: 11px;">User</label>
+                <select name="user_id" class="form-control" style="font-size: 12px; padding: 6px 10px;">
+                    {% for u in users %}
+                    <option value="{{ u.id }}">{{ u.full_name }} ({{ u.customer_id }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" style="font-size: 11px;">Bond</label>
+                <select name="instrument_id" class="form-control" style="font-size: 12px; padding: 6px 10px;">
+                    {% for inst in instruments[:12] %}
+                    <option value="{{ inst.id }}">{{ inst.name }} ({{ inst.isin }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label" style="font-size: 11px;">Side</label>
+                    <select name="side" class="form-control" style="font-size: 12px; padding: 6px 10px;">
+                        <option value="BUY">BUY</option>
+                        <option value="SELL">SELL</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" style="font-size: 11px;">Units</label>
+                    <input type="number" name="units" class="form-control" value="10" min="1" style="font-size: 12px; padding: 6px 10px;">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary btn-sm" style="width: 100%;">Execute Trade & Fire Webhook</button>
+        </form>
+    </div>
+
+    <!-- Credit Coupon Now -->
+    <div class="card">
+        <h3 style="font-size: 16px; margin-bottom: 6px;">💰 Credit Coupon Now</h3>
+        <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">
+            Simulate instantaneous coupon credit into wallet and dispatch webhook.
+        </p>
+
+        <form method="POST" action="/admin/credit-coupon">
+            <div class="form-group">
+                <label class="form-label" style="font-size: 11px;">User</label>
+                <select name="user_id" class="form-control" style="font-size: 12px; padding: 6px 10px;">
+                    {% for u in users %}
+                    <option value="{{ u.id }}">{{ u.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" style="font-size: 11px;">Bond</label>
+                <select name="instrument_id" class="form-control" style="font-size: 12px; padding: 6px 10px;">
+                    {% for inst in instruments[:12] %}
+                    <option value="{{ inst.id }}">{{ inst.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-success btn-sm" style="width: 100%; margin-top: 30px;">Credit Coupon Payout</button>
+        </form>
+    </div>
+
+    <!-- Mature Bond Now -->
+    <div class="card">
+        <h3 style="font-size: 16px; margin-bottom: 6px;">🏛️ Mature Bond Now</h3>
+        <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">
+            Redeem principal, remove holding from user demat, and dispatch webhook.
+        </p>
+
+        <form method="POST" action="/admin/mature-bond">
+            <div class="form-group">
+                <label class="form-label" style="font-size: 11px;">User</label>
+                <select name="user_id" class="form-control" style="font-size: 12px; padding: 6px 10px;">
+                    {% for u in users %}
+                    <option value="{{ u.id }}">{{ u.full_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label" style="font-size: 11px;">Bond</label>
+                <select name="instrument_id" class="form-control" style="font-size: 12px; padding: 6px 10px;">
+                    {% for inst in instruments[:12] %}
+                    <option value="{{ inst.id }}">{{ inst.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-danger btn-sm" style="width: 100%; margin-top: 30px;">Mature Principal & Settle</button>
+        </form>
+    </div>
+</div>
+
+<!-- Primary Issue Allotment & Consent Management -->
+<div class="grid-2" style="margin-bottom: 24px;">
+    <!-- Allot Primary Issues -->
+    <div class="card">
+        <h3 style="font-size: 16px; margin-bottom: 6px;">📦 Process Primary Issue Allotment</h3>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 14px;">
+            Transitions pending applications into demat holdings and dispatches webhook.
+        </p>
+        <form method="POST" action="/admin/allot-primary">
+            <div class="form-group">
+                <label class="form-label">Select Primary Issue to Allot</label>
+                <div style="display: flex; gap: 8px;">
+                    <select name="issue_id" class="form-control">
+                        {% for issue in primary_issues %}
+                        <option value="{{ issue.id }}">{{ issue.name }} (Status: {{ issue.status }})</option>
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-primary" style="white-space: nowrap;">Process Allotment</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
+    <!-- Data Reset -->
+    <div class="card">
+        <h3 style="font-size: 16px; margin-bottom: 6px;">🔄 Reset Sandbox Data</h3>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 14px;">
+            Resets all databases, users, 30+ bonds, and transaction histories back to pristine seed state.
+        </p>
+        <form method="POST" action="/admin/reset-data" onsubmit="return confirm('Are you sure you want to reset all sandbox data to initial seeds?');">
+            <button type="submit" class="btn btn-secondary" style="color: #EF4444; border-color: rgba(239,68,68,0.4); width: 100%;">
+                Reset Entire System to Seed State
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Active API Consents Table with Instant Expire/Revoke -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2 class="card-title">Aggregator API Consents (Test Reconnect Flows)</h2>
+        <span style="font-size: 12px; color: var(--gold-primary);">Manage Client Grants</span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="bb-table" style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>Consent ID</th>
+                    <th>User</th>
+                    <th>Client App</th>
+                    <th>Token Prefix</th>
+                    <th>Expires At</th>
+                    <th>Status</th>
+                    <th>Actions to Test Reconnect Flow</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in consents %}
+                <tr>
+                    <td style="font-family: monospace;">{{ c.consent_id }}</td>
+                    <td>{{ c.user.full_name }} ({{ c.user.customer_id }})</td>
+                    <td>{{ c.client_id }}</td>
+                    <td><code>{{ c.access_token_prefix }}...</code></td>
+                    <td>{{ c.expires_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td>
+                        {% if c.status == 'ACTIVE' %}
+                        <span class="badge badge-aaa">ACTIVE</span>
+                        {% elif c.status == 'EXPIRED' %}
+                        <span class="badge badge-aa">EXPIRED</span>
+                        {% else %}
+                        <span class="badge badge-a">REVOKED</span>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div style="display: flex; gap: 6px;">
+                            <form method="POST" action="/admin/consent-action" style="display: inline;">
+                                <input type="hidden" name="consent_id" value="{{ c.consent_id }}">
+                                <input type="hidden" name="action" value="expire">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 11px;">Expire Instantly</button>
+                            </form>
+                            <form method="POST" action="/admin/consent-action" style="display: inline;">
+                                <input type="hidden" name="consent_id" value="{{ c.consent_id }}">
+                                <input type="hidden" name="action" value="revoke">
+                                <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 11px; color: #EF4444;">Revoke</button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                        No active client consents currently generated. Initiate via POST /open/v1/link/token.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Webhook Delivery Logs Table -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header">
+        <h2 class="card-title">Real-Time Webhook Delivery Log (HMAC-SHA256 Signed)</h2>
+        <span style="font-size: 12px; color: var(--text-dim);">Max 3 retries with backoff</span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="bb-table" style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>Log ID</th>
+                    <th>Time</th>
+                    <th>Event</th>
+                    <th>Customer</th>
+                    <th>Target URL</th>
+                    <th>Attempts</th>
+                    <th>HTTP Code</th>
+                    <th>Delivery Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for log in webhook_logs %}
+                <tr>
+                    <td style="font-family: monospace;">WH-{{ log.id }}</td>
+                    <td>{{ log.created_at.strftime('%H:%M:%S') }}</td>
+                    <td><span class="badge badge-type">{{ log.event }}</span></td>
+                    <td>{{ log.customer_id }}</td>
+                    <td style="font-family: monospace; font-size: 11px;">{{ log.webhook_url }}</td>
+                    <td>{{ log.attempt_count }} / 3</td>
+                    <td>{{ log.status_code or '—' }}</td>
+                    <td>
+                        {% if log.status == 'SUCCESS' %}
+                        <span class="badge badge-aaa">DELIVERED</span>
+                        {% elif log.status == 'PENDING' %}
+                        <span class="badge badge-aa">PENDING</span>
+                        {% else %}
+                        <span class="badge badge-a">FAILED</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                        No webhook events recorded yet. Trigger a trade, coupon credit, or bond maturity above to view deliveries.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Recent Open API Calls Table -->
+<div class="card">
+    <div class="card-header">
+        <h2 class="card-title">Recent Open API Requests (Rate Limit: 30 req/min)</h2>
+        <span style="font-size: 12px; color: var(--text-dim);">Live API Traffic</span>
+    </div>
+
+    <div class="table-responsive">
+        <table class="bb-table" style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>Method</th>
+                    <th>Endpoint</th>
+                    <th>Status Code</th>
+                    <th>Client App</th>
+                    <th>Client IP</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for call in api_call_logs %}
+                <tr>
+                    <td>{{ call.timestamp.strftime('%H:%M:%S') }}</td>
+                    <td><span class="badge badge-type">{{ call.method }}</span></td>
+                    <td style="font-family: monospace;">{{ call.endpoint }}</td>
+                    <td>
+                        {% if call.status_code == 200 %}
+                        <span class="badge badge-aaa">200 OK</span>
+                        {% elif call.status_code == 429 %}
+                        <span class="badge badge-aa">429 RATE LIMIT</span>
+                        {% elif call.status_code == 403 %}
+                        <span class="badge badge-a">403 FORBIDDEN</span>
+                        {% elif call.status_code == 503 %}
+                        <span class="badge badge-a">503 OUTAGE</span>
+                        {% else %}
+                        <span class="badge badge-a">{{ call.status_code }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ call.client_id or 'Anonymous' }}</td>
+                    <td style="font-size: 12px; color: var(--text-dim);">{{ call.ip_address }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                        No Open API requests captured yet.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}

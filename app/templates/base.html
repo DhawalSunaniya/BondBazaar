@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}BondBazaar | Premier Indian Debt Capital & Fixed Income Platform{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="/static/js/app.js" defer></script>
+</head>
+<body>
+    <!-- Top Financial Ticker -->
+    <div class="header-top-ticker">
+        <div class="ticker-items">
+            <div class="ticker-item">
+                <span class="ticker-label">RBI REPO RATE:</span>
+                <span class="ticker-value">6.50%</span>
+            </div>
+            <div class="ticker-item">
+                <span class="ticker-label">10Y BENCHMARK G-SEC:</span>
+                <span class="ticker-value">7.08%</span>
+            </div>
+            <div class="ticker-item">
+                <span class="ticker-label">INFLATION (CPI):</span>
+                <span class="ticker-value">4.85%</span>
+            </div>
+            <div class="ticker-item">
+                <span class="ticker-label">MARKET STATUS:</span>
+                <span class="market-status-badge market-open">● LIVE / OPEN</span>
+            </div>
+        </div>
+        <div style="display: flex; gap: 12px; align-items: center; font-size: 12px;">
+            <span style="color: var(--text-dim);">Sandbox Mode: T+1 Settlement Active</span>
+            <a href="/admin" style="color: var(--gold-primary); font-weight: 600;">⚙️ Admin Controls</a>
+        </div>
+    </div>
+
+    <!-- Main Navigation Bar -->
+    <nav class="navbar">
+        <div class="nav-brand">
+            <a href="/" style="display: flex; align-items: center; gap: 10px; text-decoration: none;">
+                <div class="brand-logo-icon">B</div>
+                <div class="brand-text">BOND<span>BAZAAR</span></div>
+            </a>
+        </div>
+
+        <ul class="nav-links">
+            <li><a href="/" class="nav-link {% if request.url.path == '/' %}active{% endif %}">Dashboard</a></li>
+            <li><a href="/marketplace" class="nav-link {% if request.url.path.startswith('/marketplace') or request.url.path.startswith('/bonds') %}active{% endif %}">Marketplace</a></li>
+            <li><a href="/holdings" class="nav-link {% if request.url.path == '/holdings' %}active{% endif %}">Holdings</a></li>
+            <li><a href="/orders" class="nav-link {% if request.url.path == '/orders' %}active{% endif %}">Orders</a></li>
+            <li><a href="/primary-issues" class="nav-link {% if request.url.path == '/primary-issues' %}active{% endif %}">Primary IPOs</a></li>
+            <li><a href="/income-calendar" class="nav-link {% if request.url.path == '/income-calendar' %}active{% endif %}">Income Calendar</a></li>
+            <li><a href="/maturity-ladder" class="nav-link {% if request.url.path == '/maturity-ladder' %}active{% endif %}">Maturity Ladder</a></li>
+            <li><a href="/wallet" class="nav-link {% if request.url.path == '/wallet' %}active{% endif %}">Funds</a></li>
+            <li><a href="/reports" class="nav-link {% if request.url.path == '/reports' %}active{% endif %}">Reports</a></li>
+            <li><a href="/insights" class="nav-link {% if request.url.path == '/insights' %}active{% endif %}">Insights</a></li>
+        </ul>
+
+        <div class="nav-actions">
+            {% if user %}
+            <div class="user-pill">
+                <div class="user-avatar">{{ user.full_name[:1] }}</div>
+                <div>
+                    <div style="font-weight: 600; font-size: 12px; line-height: 1.2;">{{ user.full_name }}</div>
+                    <div style="font-size: 11px; color: var(--text-dim);">{{ user.customer_id }}</div>
+                </div>
+                <div style="margin-left: 8px; display: flex; gap: 4px;">
+                    <a href="/switch-user/{% if user.email == 'aarav.mehta@example.com' %}priya.nair@example.com{% else %}aarav.mehta@example.com{% endif %}" title="Switch Demo Account" style="font-size: 11px; padding: 2px 6px; background: rgba(212,175,55,0.15); border-radius: 4px;">
+                        ⇄ Switch
+                    </a>
+                </div>
+            </div>
+            <a href="/profile" class="btn-icon" title="Profile & Connected Apps">👤</a>
+            <a href="/logout" class="btn-icon" title="Sign Out">↪</a>
+            {% else %}
+            <a href="/login" class="btn btn-secondary btn-sm">Sign In</a>
+            <a href="/register" class="btn btn-primary btn-sm">Open Account</a>
+            {% endif %}
+
+            <button id="themeToggleBtn" class="theme-toggle-btn" title="Toggle Light/Dark">☀️</button>
+        </div>
+    </nav>
+
+    <!-- Main Content Body -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer with Mandatory Simulated Platform Banner -->
+    <footer class="footer">
+        <div class="simulated-banner">
+            <span>⚠️</span>
+            <span><strong>Simulated data - not a real platform</strong>. Sandbox provider for portfolio aggregation integration testing.</span>
+        </div>
+        <div class="footer-inner">
+            <div>
+                © 2026 BondBazaar Technologies Pvt. Ltd. | SEBI Registered OBPP Sandbox Mock Environment
+            </div>
+            <div style="display: flex; gap: 16px;">
+                <a href="/docs" target="_blank" style="color: var(--text-muted);">API Documentation</a>
+                <a href="/admin" style="color: var(--text-muted);">Simulator Controls</a>
+                <a href="/health" style="color: var(--text-muted);">Health Check</a>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
