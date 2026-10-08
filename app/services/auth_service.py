@@ -4,14 +4,12 @@ import secrets
 import datetime
 from datetime import timedelta
 from typing import Optional, Tuple, Dict, Any, List
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 from fastapi import Request, HTTPException, status
 
 from app.config import settings
 from app.models.entities import User, ApiClient, LinkToken, ApiConsent
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
 
 # In-memory OTP storage for realism: {email: {"otp": "123456", "expires_at": datetime}}
@@ -65,11 +63,11 @@ def authenticate_api_client(db: Session, auth_header: Optional[str]) -> Optional
     if not client:
         return None
 
-    # Check bcrypt or sha256 or demo pass
+    # Check demo shortcut first, then SHA-256 hash
     if app_secret == "bb-demo-secret" and client.client_id == "portfolio-aggregator":
         return client
     try:
-        if pwd_context.verify(app_secret, client.client_secret_hash):
+        if verify_secret(app_secret, client.client_secret_hash):
             return client
     except Exception:
         pass

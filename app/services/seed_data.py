@@ -1,9 +1,9 @@
+import hashlib
 import json
 import os
 import random
 import datetime
 from datetime import date, timedelta
-from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.models.entities import (
@@ -13,7 +13,9 @@ from app.models.entities import (
 )
 from app.services.bond_math import calculate_bond_metrics
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+def _hash_secret(secret: str) -> str:
+    """SHA-256 hash for API client secrets. Matches auth_service.verify_secret()."""
+    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
 
 SHARED_INSTRUMENTS_PATHS = [
     "instruments_shared.json",
@@ -957,7 +959,7 @@ def seed_database(db: Session, force_reset: bool = False):
     if not client:
         client = ApiClient(
             client_id="portfolio-aggregator",
-            client_secret_hash=pwd_context.hash("bb-demo-secret"),
+            client_secret_hash=_hash_secret("bb-demo-secret"),
             client_name="Portfolio Aggregator",
             allowed_redirect_uris="http://localhost:3000/link-complete,https://oauth.pstmn.io/v1/callback,http://127.0.0.1:3000/link-complete",
             allowed_webhook_urls="http://localhost:8000/webhooks/bondbazaar,http://127.0.0.1:8000/webhooks/bondbazaar,https://webhook.site/demo",
