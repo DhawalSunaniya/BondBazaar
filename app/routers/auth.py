@@ -2,20 +2,24 @@ from fastapi import APIRouter, Depends, Request, Form, Response, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from typing import Optional
 import uuid
 
 from app.database import get_db
 from app.models.entities import User
 from app.services.auth_service import generate_otp_for_email, verify_otp_for_email
 from app.templates_engine import templates
+from app.shared_identity import normalize_email, generate_identity, full_name_from_claims
+from app.services.portfolio_provisioner import provision_user_portfolio
 
 router = APIRouter(tags=["Authentication"])
 
 def get_current_user_optional(request: Request, db: Session) -> User:
-    email = request.cookies.get("bb_session_email")
-    if not email:
+    email_raw = request.cookies.get("bb_session_email")
+    if not email_raw:
         # Default to Aarav Mehta for smooth exploration if not logged in
         return db.query(User).filter(User.email == "aarav.mehta@example.com").first()
+    email = normalize_email(email_raw)
     user = db.query(User).filter(User.email == email).first()
     return user or db.query(User).filter(User.email == "aarav.mehta@example.com").first()
 
@@ -28,7 +32,7 @@ async def login_page(request: Request):
 
 @router.post("/send-otp")
 async def send_otp_action(request: Request, email: str = Form(...), db: Session = Depends(get_db)):
-    clean_email = email.strip().lower()
+    clean_email = normalize_email(email)
     user = db.query(User).filter(User.email == clean_email).first()
     if not user:
         return templates.TemplateResponse("login.html", {
@@ -54,7 +58,7 @@ async def verify_otp_action(
     otp: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    clean_email = email.strip().lower()
+    clean_email = normalize_email(email)
     if not verify_otp_for_email(clean_email, otp):
         return templates.TemplateResponse("login.html", {
             "request": request,
@@ -82,7 +86,7 @@ async def register_action(
     demat_account: str = Form(...),
     db: Session = Depends(get_db)
 ):
-    clean_email = email.strip().lower()
+    clean_email = normalize_email(email)
     existing = db.query(User).filter(User.email == clean_email).first()
     if existing:
         return templates.TemplateResponse("register.html", {
@@ -90,26 +94,65 @@ async def register_action(
             "error_message": "An account with this email already exists."
         })
 
-    # Generate customer ID e.g. BB-91823
-    cid = f"BB-{uuid.uuid4().int % 90000 + 10000}"
-    pan_clean = pan.strip().upper()
-    pan_masked = f"{pan_clean[:5]}****{pan_clean[-1]}" if len(pan_clean) >= 6 else "ABCDE****F"
-    demat_clean = demat_account.strip()
-    demat_masked = f"{demat_clean[:8]}****{demat_clean[-4:]}" if len(demat_clean) >= 12 else "12081600****1234"
+    identity = generate_identity(clean_email)
+    display_name = full_name_from_claims(full_name, clean_email)
 
     user = User(
         email=clean_email,
-        full_name=full_name.strip(),
-        mobile=mobile.strip(),
-        customer_id=cid,
-        pan=pan_clean,
-        pan_masked=pan_masked,
-        demat_account=demat_clean,
-        demat_account_masked=demat_masked,
-        wallet_balance=250000.0
+        full_name=display_name,
+        mobile=mobile.strip() or identity["mobile"],
+        customer_id=identity["customer_id"],
+        pan=identity["pan"],
+        pan_masked=identity["pan_masked"],
+        demat_account=identity["demat_account"],
+        demat_account_masked=identity["demat_account_masked"],
+        bank_name=identity["bank_name"],
+        bank_account_masked=identity["bank_account_masked"],
+        bank_ifsc=identity["bank_ifsc"],
+        wallet_balance=1_000_000.0,  # ₹10,00,000
     )
     db.add(user)
     db.commit()
+    db.refresh(user)
+
+    # Assign deterministic starter portfolio (Provider-C theme: G-Secs + SGBs)
+    provision_user_portfolio(db, user)
+
+    resp = RedirectResponse(url="/", status_code=303)
+    resp.set_cookie("bb_session_email", user.email, max_age=86400 * 30, httponly=True)
+    return resp
+
+@router.post("/auth/google")
+async def google_login_action(
+    request: Request,
+    email: str = Form(...),
+    name: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """Google sign-in matching provisioned users by normalized email."""
+    clean_email = normalize_email(email)
+    user = db.query(User).filter(User.email == clean_email).first()
+    if not user:
+        identity = generate_identity(clean_email)
+        display_name = full_name_from_claims(name, clean_email)
+        user = User(
+            email=clean_email,
+            full_name=display_name,
+            mobile=identity["mobile"],
+            customer_id=identity["customer_id"],
+            pan=identity["pan"],
+            pan_masked=identity["pan_masked"],
+            demat_account=identity["demat_account"],
+            demat_account_masked=identity["demat_account_masked"],
+            bank_name=identity["bank_name"],
+            bank_account_masked=identity["bank_account_masked"],
+            bank_ifsc=identity["bank_ifsc"],
+            wallet_balance=1_000_000.0,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        provision_user_portfolio(db, user)
 
     resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie("bb_session_email", user.email, max_age=86400 * 30, httponly=True)
@@ -117,7 +160,8 @@ async def register_action(
 
 @router.get("/switch-user/{target_email}")
 async def switch_user(target_email: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == target_email).first()
+    clean = normalize_email(target_email)
+    user = db.query(User).filter(User.email == clean).first()
     resp = RedirectResponse(url="/", status_code=303)
     if user:
         resp.set_cookie("bb_session_email", user.email, max_age=86400 * 30, httponly=True)
@@ -128,3 +172,4 @@ async def logout_action():
     resp = RedirectResponse(url="/login", status_code=303)
     resp.delete_cookie("bb_session_email")
     return resp
+

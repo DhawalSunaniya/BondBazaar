@@ -217,8 +217,90 @@ python webhook_receiver_sample.py
 
 ---
 
+---
+
+## 🔌 TradeOne Internal API Integration
+
+BondBazaar integrates with the TradeOne portfolio aggregator as **Provider C** (theme: Government Securities, G-Secs, and SGBs).
+
+### Configuration
+
+| Variable | Description | Default |
+|---|---|---|
+| `BROKER_NAME` | Broker identity | `BondBazaar` |
+| `PROVIDER_CODE` | Provider single-character code | `c` |
+| `DP_NAME` | Depository participant name | `BondBazaar Depository Services` |
+| `DP_ID` | Depository participant ID | `IN300003` |
+| `INTERNAL_API_ENABLED` | Enable internal TradeOne endpoints | `false` |
+| `INTERNAL_API_KEY` | Secret key required in `x-internal-key` header | `""` |
+| `SHARED_IDENTITY_SALT` | Salt for deterministic cross-broker HMAC identity | `tradeone-shared-identity-salt-2026` |
+| `TRADEONE_URL` | Base URL of TradeOne aggregator outbox destination | `""` |
+
+### Security & Authentication
+
+- Guarded by `INTERNAL_API_ENABLED=true`.
+- Requires header `x-internal-key` verified via constant-time HMAC comparison (`hmac.compare_digest`).
+- Missing or invalid key immediately returns `HTTP 401`. The key is **never logged**.
+- Built-in rate limiting: **60 requests/minute** per IP (returns `HTTP 429` with `Retry-After: 60`).
+
+### Endpoints
+
+#### 1. Provision User
+```bash
+POST /internal/v1/users/provision
+Content-Type: application/json
+x-internal-key: <INTERNAL_API_KEY>
+
+{
+  "email": "user@example.com",
+  "fullName": "Aarav Sharma"
+}
+```
+*Idempotent*: returns existing user or deterministically creates user and assigns starter portfolio (G-Secs, SGBs, with 2-3 cross-broker overlapping ISINs, prices within ±15% of market price, and starting wallet ₹10,00,000).
+
+#### 2. User Profile
+```bash
+GET /internal/v1/users/{email}/profile
+x-internal-key: <INTERNAL_API_KEY>
+```
+Returns profile matching `GET /open/v1/customer` structure.
+
+#### 3. Holdings Parity
+```bash
+GET /internal/v1/users/{email}/holdings?limit=20&cursor=<holding_id>
+x-internal-key: <INTERNAL_API_KEY>
+```
+Returns holdings in **identical JSON:API structure and pagination** (`data`, `links`, `meta`) as the public `GET /open/v1/holdings`.
+
+#### 4. Portfolio Summary
+```bash
+GET /internal/v1/users/{email}/summary
+x-internal-key: <INTERNAL_API_KEY>
+```
+Returns aggregate totals (`totalInvestedPaise`, `totalCurrentValuePaise`, `totalAccruedInterestPaise`, `unrealisedPnlPaise`, `walletBalancePaise`, `holdingCount`).
+
+### Outbox Event Notification
+
+After any committed holdings change (secondary market order settlement, bond maturity redemption), an outbox event is enqueued asynchronously and posted to:
+```
+POST {TRADEONE_URL}/internal/v1/events
+```
+Body:
+```json
+{
+  "provider": "c",
+  "email": "user@example.com",
+  "event": "HOLDINGS_CHANGED",
+  "occurredAt": "2026-10-09T01:30:00+05:30"
+}
+```
+- Retries up to **10 times with exponential backoff** (1s to 60s).
+- Fire-and-forget: **never blocks or fails trades**.
+
+---
+
 ## 🧪 Running Unit & Integration Tests
-Execute all 14 tests:
+Execute all unit and integration tests:
 ```bash
 python -m pytest -v
 ```

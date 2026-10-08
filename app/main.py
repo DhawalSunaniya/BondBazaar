@@ -11,7 +11,7 @@ from app.config import settings
 from app.database import engine, Base, SessionLocal
 from app.services.seed_data import seed_database
 from app.services.pricing_engine import pricing_background_task
-from app.routers import auth, web, link, open_api, admin
+from app.routers import auth, web, link, open_api, admin, internal
 
 pricing_task = None
 
@@ -88,3 +88,4 @@ app.include_router(web.router)
 app.include_router(link.router)
 app.include_router(open_api.router)
 app.include_router(admin.router)
+app.include_router(internal.router)

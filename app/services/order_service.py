@@ -9,6 +9,7 @@ from app.models.entities import (
 )
 from app.services.bond_math import calculate_bond_metrics, calculate_accrued_interest, calculate_dirty_price_from_ytm
 from app.services.webhook_service import trigger_holdings_updated_event
+from app.services.tradeone_outbox import enqueue_holdings_changed
 
 def get_simulated_order_book(inst: Instrument) -> Dict[str, Any]:
     """Generates a realistic 5-level order book for secondary trading."""
@@ -171,8 +172,9 @@ def place_secondary_order(
     db.commit()
     db.refresh(order)
 
-    # Fire Webhook!
+    # Fire Webhook and TradeOne outbox event
     trigger_holdings_updated_event(db, user, background_tasks)
+    enqueue_holdings_changed(user.email)
 
     return True, "Order successfully executed and settled.", order
 
@@ -232,4 +234,5 @@ def mature_bond_holding(db: Session, user: User, instrument: Instrument, backgro
     db.commit()
 
     trigger_holdings_updated_event(db, user, background_tasks)
+    enqueue_holdings_changed(user.email)
     return True, f"Bond matured. Redeemed ₹{redemption_amount:,.2f} principal.", redemption_amount
