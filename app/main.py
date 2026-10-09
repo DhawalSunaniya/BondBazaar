@@ -84,6 +84,8 @@ async def health_check():
         "status": "UP",
         "platform": settings.PLATFORM_NAME,
         "environment": "sandbox",
+        "version": "1.0.1",
+        "internal_api_enabled": getattr(settings, "INTERNAL_API_ENABLED", False),
         "timestamp": datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=5, minutes=30))).isoformat()
     }
 

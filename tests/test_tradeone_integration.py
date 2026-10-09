@@ -372,6 +372,32 @@ def test_internal_holdings_json_structure(internal_client):
         assert "couponRateBps" in attrs
 
 
+def test_internal_summary_json_structure(internal_client):
+    """Internal summary must return aggregate portfolio data with required attributes."""
+    h = {"x-internal-key": "test-key-abc"}
+    internal_client.post(
+        "/internal/v1/users/provision",
+        json={"email": "summaryuser@example.com"},
+        headers=h,
+    )
+    resp = internal_client.get(
+        "/internal/v1/users/summaryuser@example.com/summary",
+        headers=h,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "data" in body
+    assert body["data"]["type"] == "portfolio_summary"
+    attrs = body["data"]["attributes"]
+    assert "holdingCount" in attrs
+    assert "totalInvestedPaise" in attrs
+    assert "totalCurrentValuePaise" in attrs
+    assert "totalAccruedInterestPaise" in attrs
+    assert "unrealisedPnlPaise" in attrs
+    assert "walletBalancePaise" in attrs
+    assert attrs["providerCode"] == "c"
+
+
 # ── 6. Google linking — normalized email matching ─────────────────────────────
 
 def test_google_linking_normalized_email():

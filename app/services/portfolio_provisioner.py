@@ -46,7 +46,7 @@ DEMO_EMAILS = {"aarav.mehta@example.com", "priya.nair@example.com"}
 
 def _seed_int(email: str, tag: str) -> int:
     """Stable integer derived from email + tag via HMAC-SHA256."""
-    salt = getattr(settings, "SHARED_IDENTITY_SALT", "tradeone-shared-identity-salt-2026")
+    salt = getattr(settings, "SHARED_IDENTITY_SALT", "tradeone-shared-identity-salt")
     mac = hmac.new(
         salt.encode(),
         f"{tag}:{normalize_email(email)}".encode(),
