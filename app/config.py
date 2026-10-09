@@ -88,8 +88,8 @@ class Settings(BaseSettings):
 
     # ── TradeOne Internal API — shared secrets ────────────────────────────────
     INTERNAL_API_ENABLED: bool = True
-    INTERNAL_API_KEY: str = "bb_int_key_4a9b2c8e1f7d5a3b6e8c0d2f4a1e9c7b"
-    SHARED_IDENTITY_SALT: str = "tradeone-shared-identity-salt-2026"
+    INTERNAL_API_KEY: str = "tradeone-internal-secret-key"
+    SHARED_IDENTITY_SALT: str = "tradeone-shared-identity-salt"
     TRADEONE_URL: str = ""
 
     # ── Portfolio seeding ─────────────────────────────────────────────────────

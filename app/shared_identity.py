@@ -33,7 +33,7 @@ def generate_identity(email: str) -> dict:
     Fields that must NOT look like real Aadhaar/PAN are intentionally formatted
     to be clearly fictitious (e.g. demat uses provider-prefix "IN300003-BB-…").
     """
-    salt = getattr(settings, "SHARED_IDENTITY_SALT", "tradeone-shared-identity-salt-2026")
+    salt = getattr(settings, "SHARED_IDENTITY_SALT", "tradeone-shared-identity-salt")
     norm = normalize_email(email)
 
     def _derive(tag: str, length: int = 8) -> str:
