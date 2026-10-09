@@ -30,15 +30,19 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
 
-    # Start 10s pricing nudge background task
-    global pricing_task
+    # Start 10s pricing nudge background task & outbox background worker
+    global pricing_task, outbox_task
     pricing_task = asyncio.create_task(pricing_background_task())
+    from app.services.tradeone_outbox import outbox_background_worker
+    outbox_task = asyncio.create_task(outbox_background_worker())
 
     yield
 
     # Shutdown
     if pricing_task:
         pricing_task.cancel()
+    if outbox_task:
+        outbox_task.cancel()
 
 app = FastAPI(
     title=f"{settings.PLATFORM_NAME} Sandbox API",

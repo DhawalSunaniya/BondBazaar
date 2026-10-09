@@ -9,7 +9,7 @@ from app.models.entities import (
 )
 from app.services.bond_math import calculate_bond_metrics, calculate_accrued_interest, calculate_dirty_price_from_ytm
 from app.services.webhook_service import trigger_holdings_updated_event
-from app.services.tradeone_outbox import enqueue_holdings_changed
+from app.services.tradeone_outbox import enqueue_holdings_changed, create_outbox_event, trigger_outbox_delivery
 
 def get_simulated_order_book(inst: Instrument) -> Dict[str, Any]:
     """Generates a realistic 5-level order book for secondary trading."""
@@ -40,10 +40,12 @@ def place_secondary_order(
     units: int,
     limit_price: Optional[float] = None,
     limit_yield: Optional[float] = None,
-    background_tasks = None
+    background_tasks = None,
+    is_pending: bool = False
 ) -> Tuple[bool, str, Optional[SecondaryOrder]]:
     """
     Enforces minimum lot size, funds check, holdings check, and settles market orders.
+    Pending limit orders are saved as PENDING without creating/altering delivery holdings.
     """
     side = side.upper()
     order_type = order_type.upper()
@@ -86,6 +88,39 @@ def place_secondary_order(
     total_consideration = round(principal_clean + accrued_total + stamp_duty + exchange_charges, 2)
 
     order_id = f"ord_{uuid.uuid4().hex[:8]}"
+
+    # Check if this is a pending limit order (not marketable right now)
+    is_pending_limit = False
+    if order_type == "LIMIT":
+        if is_pending:
+            is_pending_limit = True
+        elif side == "BUY" and exec_clean_price < instrument.clean_price:
+            is_pending_limit = True
+        elif side == "SELL" and exec_clean_price > instrument.clean_price:
+            is_pending_limit = True
+
+    if is_pending_limit:
+        order = SecondaryOrder(
+            order_id=order_id,
+            user_id=user.id,
+            instrument_id=instrument.id,
+            side=side,
+            order_type="LIMIT",
+            limit_price=limit_price,
+            limit_yield=limit_yield,
+            units=units,
+            execution_price=exec_clean_price,
+            accrued_interest_per_unit=accrued_per_unit,
+            stamp_duty=stamp_duty,
+            exchange_charges=exchange_charges,
+            total_consideration=total_consideration,
+            settlement_date=settlement_date,
+            status="PENDING"
+        )
+        db.add(order)
+        db.commit()
+        db.refresh(order)
+        return True, "Limit order placed (pending fill).", order
 
     if side == "BUY":
         # Check wallet balance
@@ -169,11 +204,16 @@ def place_secondary_order(
         status="SETTLED"
     )
     db.add(order)
+
+    # Insert OutboxEvent in the EXACT SAME transaction
+    outbox_event = create_outbox_event(db, user.email, event="HOLDINGS_CHANGED", provider="c")
+
     db.commit()
     db.refresh(order)
 
     # Fire Webhook and TradeOne outbox event
     trigger_holdings_updated_event(db, user, background_tasks)
+    trigger_outbox_delivery(outbox_event.event_id)
     enqueue_holdings_changed(user.email)
 
     return True, "Order successfully executed and settled.", order
@@ -231,8 +271,10 @@ def mature_bond_holding(db: Session, user: User, instrument: Instrument, backgro
     ))
     
     db.delete(holding)
+    outbox_event = create_outbox_event(db, user.email, event="HOLDINGS_CHANGED", provider="c")
     db.commit()
 
     trigger_holdings_updated_event(db, user, background_tasks)
+    trigger_outbox_delivery(outbox_event.event_id)
     enqueue_holdings_changed(user.email)
     return True, f"Bond matured. Redeemed ₹{redemption_amount:,.2f} principal.", redemption_amount

@@ -279,6 +279,30 @@
         </form>
     </div>
 
+    <!-- Purge Starter Holdings -->
+    <div class="card">
+        <h3 style="font-size: 16px; margin-bottom: 6px;">🧹 Remove Starter / Seeded Holdings</h3>
+        <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 14px;">
+            Deletes unbacked starter holdings for non-demo users and fires HOLDINGS_CHANGED outbox event for TradeOne. Real trades are preserved.
+        </p>
+        <form method="POST" action="/admin/purge-starter-holdings" onsubmit="return confirm('Purge unbacked starter holdings? Real executed trades are never touched.');">
+            <div class="form-group">
+                <label class="form-label" style="font-size: 11px;">Select User</label>
+                <div style="display: flex; gap: 8px;">
+                    <select name="user_id" class="form-control" style="font-size: 12px;">
+                        <option value="">All Non-Demo Users</option>
+                        {% for u in users %}
+                        {% if u.email not in ['aarav.mehta@example.com', 'priya.nair@example.com'] %}
+                        <option value="{{ u.id }}">{{ u.full_name }} ({{ u.email }})</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                    <button type="submit" class="btn btn-danger btn-sm" style="white-space: nowrap;">Purge & Notify Hub</button>
+                </div>
+            </div>
+        </form>
+    </div>
+
     <!-- Data Reset -->
     <div class="card">
         <h3 style="font-size: 16px; margin-bottom: 6px;">🔄 Reset Sandbox Data</h3>
@@ -402,6 +426,66 @@
                 <tr>
                     <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">
                         No webhook events recorded yet. Trigger a trade, coupon credit, or bond maturity above to view deliveries.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- TradeOne Outbox Events Table -->
+<div class="card" style="margin-bottom: 24px;">
+    <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <h2 class="card-title">TradeOne Outbox Events (HOLDINGS_CHANGED)</h2>
+            <span style="font-size: 12px; color: var(--text-dim);">Transactional delivery to hub with 10 retries & exponential backoff</span>
+        </div>
+        <form method="POST" action="/admin/outbox/resend-all" style="margin: 0;">
+            <button type="submit" class="btn btn-secondary btn-sm" style="font-size: 12px;">🔄 Resend All</button>
+        </form>
+    </div>
+
+    <div class="table-responsive">
+        <table class="bb-table" style="font-size: 13px;">
+            <thead>
+                <tr>
+                    <th>Event ID</th>
+                    <th>Email</th>
+                    <th>Event</th>
+                    <th>Occurred At</th>
+                    <th>Attempts</th>
+                    <th>Last Attempt</th>
+                    <th>Status</th>
+                    <th>Last Error</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for evt in outbox_events %}
+                <tr>
+                    <td style="font-family: monospace;">{{ evt.event_id }}</td>
+                    <td>{{ evt.email }}</td>
+                    <td><span class="badge badge-type">{{ evt.event }}</span></td>
+                    <td style="font-size: 11px;">{{ evt.occurred_at }}</td>
+                    <td>{{ evt.attempts }} / 10</td>
+                    <td style="font-size: 11px;">{{ evt.last_attempt_at.strftime('%H:%M:%S') if evt.last_attempt_at else '—' }}</td>
+                    <td>
+                        {% if evt.status == 'DELIVERED' %}
+                        <span class="badge badge-aaa">DELIVERED</span>
+                        {% elif evt.status == 'PENDING' %}
+                        <span class="badge badge-aa">PENDING</span>
+                        {% else %}
+                        <span class="badge badge-a">FAILED</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size: 11px; color: var(--text-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ evt.last_error or 'None' }}
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                        No outbox events recorded yet. Trade execution, primary allotment, or starter holdings purge will trigger events.
                     </td>
                 </tr>
                 {% endfor %}

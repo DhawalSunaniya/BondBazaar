@@ -165,16 +165,29 @@ def make_user(db, email="new@example.com"):
     return user
 
 
-def test_provision_creates_holdings():
+def test_provision_creates_zero_holdings_by_default():
+    """Default behavior: SEED_STARTER_PORTFOLIO=False creates ZERO holdings."""
     db = make_test_db()
     seed_instruments(db)
     user = make_user(db)
     from app.services.portfolio_provisioner import provision_user_portfolio
     holdings = provision_user_portfolio(db, user)
-    assert len(holdings) > 0, "Provisioner must create at least one holding"
+    assert holdings == [], "Provisioner must create zero holdings by default"
 
 
-def test_provision_overlap_isins_included():
+def test_provision_creates_holdings_when_enabled(monkeypatch):
+    """When explicitly enabled, deterministic starter portfolio is created."""
+    monkeypatch.setattr("app.config.settings.SEED_STARTER_PORTFOLIO", True)
+    db = make_test_db()
+    seed_instruments(db)
+    user = make_user(db)
+    from app.services.portfolio_provisioner import provision_user_portfolio
+    holdings = provision_user_portfolio(db, user)
+    assert len(holdings) > 0, "Provisioner must create holdings when SEED_STARTER_PORTFOLIO is True"
+
+
+def test_provision_overlap_isins_included(monkeypatch):
+    monkeypatch.setattr("app.config.settings.SEED_STARTER_PORTFOLIO", True)
     from app.services.portfolio_provisioner import OVERLAP_ISINS
     db = make_test_db()
     seed_instruments(db)
@@ -187,8 +200,9 @@ def test_provision_overlap_isins_included():
             assert isin in holding_isins, f"Overlap ISIN {isin} must be in new user portfolio"
 
 
-def test_provision_is_deterministic():
-    """Same email → same holdings after DB reset."""
+def test_provision_is_deterministic(monkeypatch):
+    """Same email → same holdings after DB reset when enabled."""
+    monkeypatch.setattr("app.config.settings.SEED_STARTER_PORTFOLIO", True)
     email = "deterministic@example.com"
 
     def _run():
@@ -204,7 +218,8 @@ def test_provision_is_deterministic():
     assert run1 == run2, "Same email must produce identical portfolio after DB reset"
 
 
-def test_provision_price_within_15pct():
+def test_provision_price_within_15pct(monkeypatch):
+    monkeypatch.setattr("app.config.settings.SEED_STARTER_PORTFOLIO", True)
     db = make_test_db()
     seed_instruments(db)
     user = make_user(db)
@@ -217,7 +232,8 @@ def test_provision_price_within_15pct():
             f"avg_purchase_price {h.avg_purchase_price} is more than 15% from {current}"
 
 
-def test_provision_sets_wallet():
+def test_provision_sets_wallet(monkeypatch):
+    monkeypatch.setattr("app.config.settings.SEED_STARTER_PORTFOLIO", True)
     db = make_test_db()
     seed_instruments(db)
     user = make_user(db)
@@ -499,3 +515,235 @@ async def test_outbox_stops_on_success():
 
     assert attempt_count == 1, "Must stop after first successful delivery"
     tradeone_outbox._TRADEONE_URL = original_url
+
+
+# ── 8. Requirement 5 verification tests ───────────────────────────────────────
+
+def test_req5_new_google_user_provisioning_has_zero_holdings(internal_client):
+    """A new Google user via provisioning has zero holdings, positions, orders and trades."""
+    from app.database import SessionLocal
+    h = {"x-internal-key": "test-key-abc"}
+    email = "newgoogleuser@example.com"
+    r = internal_client.post(
+        "/internal/v1/users/provision",
+        json={"email": email, "fullName": "New Google User"},
+        headers=h,
+    )
+    assert r.status_code == 200
+    db = SessionLocal()
+    try:
+        from app.models.entities import User, Holding, SecondaryOrder
+        u = db.query(User).filter(User.email == email).first()
+        assert u is not None
+        assert u.wallet_balance == 1_000_000.0  # STARTING_FUNDS
+        holdings_cnt = db.query(Holding).filter(Holding.user_id == u.id).count()
+        orders_cnt = db.query(SecondaryOrder).filter(SecondaryOrder.user_id == u.id).count()
+        assert holdings_cnt == 0, "New user must have ZERO holdings"
+        assert orders_cnt == 0, "New user must have ZERO orders"
+    finally:
+        db.close()
+
+
+def test_req5_internal_endpoint_returns_empty_list_for_existing_user_without_trades(internal_client):
+    """The internal endpoint returns an empty list (not 404) for an existing user without trades."""
+    h = {"x-internal-key": "test-key-abc"}
+    email = "notradesuser@example.com"
+    # Provision user so user exists
+    internal_client.post(
+        "/internal/v1/users/provision",
+        json={"email": email},
+        headers=h,
+    )
+    # Holdings query
+    resp = internal_client.get(
+        f"/internal/v1/users/{email}/holdings",
+        headers=h,
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["data"] == []
+    assert body["meta"]["count"] == 0
+    assert body["meta"]["totalInvestedPaise"] == 0
+    assert body["meta"]["totalCurrentValuePaise"] == 0
+
+    # Summary query also returns 200 with 0 counts
+    sum_resp = internal_client.get(
+        f"/internal/v1/users/{email}/summary",
+        headers=h,
+    )
+    assert sum_resp.status_code == 200
+    sum_data = sum_resp.json()["data"]["attributes"]
+    assert sum_data["holdingCount"] == 0
+    assert sum_data["invested"] == 0
+    assert sum_data["currentValue"] == 0
+    assert sum_data["last_trade_at"] is None
+
+
+def test_req5_buy_5_sell_2_returns_3_with_correct_avg_price(internal_client):
+    """After a buy of 5 and a sell of 2 it returns 3 with the correct average price."""
+    from app.database import SessionLocal
+    from app.models.entities import User, Instrument
+    from app.services.order_service import place_secondary_order
+
+    h = {"x-internal-key": "test-key-abc"}
+    email = "trader52@example.com"
+    internal_client.post(
+        "/internal/v1/users/provision",
+        json={"email": email},
+        headers=h,
+    )
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        inst = db.query(Instrument).first()
+        inst.min_lot_size = 1  # Ensure order of 5 and 2 is accepted
+
+        # Buy 5 units
+        clean_price = inst.clean_price
+        success, msg, ord1 = place_secondary_order(
+            db, user, inst, side="BUY", order_type="MARKET", units=5
+        )
+        assert success is True
+
+        # Sell 2 units
+        success, msg, ord2 = place_secondary_order(
+            db, user, inst, side="SELL", order_type="MARKET", units=2
+        )
+        assert success is True
+    finally:
+        db.close()
+
+    # Query internal holdings endpoint
+    resp = internal_client.get(
+        f"/internal/v1/users/{email}/holdings",
+        headers=h,
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert len(data) == 1
+    attrs = data[0]["attributes"]
+    assert attrs["units"] == 3
+    expected_avg_paise = int(round(clean_price * 100))
+    assert attrs["avgPurchasePricePaise"] == expected_avg_paise
+
+
+def test_req5_two_different_emails_never_see_each_others_data(internal_client):
+    """Two different emails never see each other's data."""
+    from app.database import SessionLocal
+    from app.models.entities import User, Instrument
+    from app.services.order_service import place_secondary_order
+
+    h = {"x-internal-key": "test-key-abc"}
+    email_a = "user_alpha@example.com"
+    email_b = "user_beta@example.com"
+
+    internal_client.post("/internal/v1/users/provision", json={"email": email_a}, headers=h)
+    internal_client.post("/internal/v1/users/provision", json={"email": email_b}, headers=h)
+
+    # User A trades 5 units
+    db = SessionLocal()
+    try:
+        user_a = db.query(User).filter(User.email == email_a).first()
+        inst = db.query(Instrument).first()
+        inst.min_lot_size = 1
+        place_secondary_order(db, user_a, inst, side="BUY", order_type="MARKET", units=5)
+    finally:
+        db.close()
+
+    # User A holdings
+    resp_a = internal_client.get(f"/internal/v1/users/{email_a}/holdings", headers=h)
+    assert resp_a.status_code == 200
+    assert len(resp_a.json()["data"]) == 1
+
+    # User B holdings (has not traded)
+    resp_b = internal_client.get(f"/internal/v1/users/{email_b}/holdings", headers=h)
+    assert resp_b.status_code == 200
+    assert resp_b.json()["data"] == [], "User B must see zero holdings"
+
+
+def test_req5_unknown_email_returns_404_never_demo_user(internal_client):
+    """Unknown email returns 404 and never the demo user."""
+    h = {"x-internal-key": "test-key-abc"}
+    resp = internal_client.get(
+        "/internal/v1/users/nonexistent_person_12345@example.com/holdings",
+        headers=h,
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "USER_NOT_FOUND"
+
+    sum_resp = internal_client.get(
+        "/internal/v1/users/nonexistent_person_12345@example.com/summary",
+        headers=h,
+    )
+    assert sum_resp.status_code == 404
+    assert sum_resp.json()["detail"] == "USER_NOT_FOUND"
+
+
+def test_req5_pending_limit_orders_do_not_appear_as_holdings(internal_client):
+    """Pending limit orders do not appear as holdings."""
+    from app.database import SessionLocal
+    from app.models.entities import User, Instrument
+    from app.services.order_service import place_secondary_order
+
+    h = {"x-internal-key": "test-key-abc"}
+    email = "limituser@example.com"
+    internal_client.post("/internal/v1/users/provision", json={"email": email}, headers=h)
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        inst = db.query(Instrument).first()
+        inst.min_lot_size = 1
+
+        # Place pending BUY limit order with limit_price well below market clean_price
+        pending_limit_price = inst.clean_price - 100.0
+        success, msg, ord_limit = place_secondary_order(
+            db, user, inst, side="BUY", order_type="LIMIT", units=5,
+            limit_price=pending_limit_price
+        )
+        assert success is True
+        assert ord_limit.status == "PENDING"
+    finally:
+        db.close()
+
+    # Query holdings — must be empty!
+    resp = internal_client.get(f"/internal/v1/users/{email}/holdings", headers=h)
+    assert resp.status_code == 200
+    assert resp.json()["data"] == [], "Pending limit orders must not appear as holdings"
+
+
+def test_req5_outbox_event_created_in_same_transaction_as_trade(internal_client):
+    """The outbox event is created in the same transaction as the trade."""
+    from app.database import SessionLocal
+    from app.models.entities import User, Instrument, OutboxEvent
+    from app.services.order_service import place_secondary_order
+
+    h = {"x-internal-key": "test-key-abc"}
+    email = "outboxuser@example.com"
+    internal_client.post("/internal/v1/users/provision", json={"email": email}, headers=h)
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        inst = db.query(Instrument).first()
+        inst.min_lot_size = 1
+
+        # Execute market trade
+        success, msg, ord_exec = place_secondary_order(
+            db, user, inst, side="BUY", order_type="MARKET", units=5
+        )
+        assert success is True
+
+        # Check outbox event exists in DB
+        outbox = (
+            db.query(OutboxEvent)
+            .filter(OutboxEvent.email == email, OutboxEvent.event == "HOLDINGS_CHANGED")
+            .first()
+        )
+        assert outbox is not None
+        assert outbox.status in ("PENDING", "DELIVERED")
+        assert outbox.provider == "c"
+        assert outbox.occurred_at is not None
+    finally:
+        db.close()
+

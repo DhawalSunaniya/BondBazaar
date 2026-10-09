@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     WEBHOOK_SIGNING_SECRET: str = ""
 
     # ── Demo / Sandbox ────────────────────────────────────────────────────────
+    DEMO_MODE: bool = True
     DEMO_OTP: str = "123456"
     BASE_URL: str = "http://localhost:8000"
     CORS_ORIGINS: str = "*"

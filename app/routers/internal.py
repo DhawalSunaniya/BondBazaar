@@ -27,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models.entities import Holding, User
+from app.models.entities import Holding, User, SecondaryOrder, PrimaryApplication, PriceHistory
 from app.services.portfolio_provisioner import provision_user_portfolio
 from app.services.serializer import (
     serialize_customer,
@@ -39,6 +39,8 @@ from app.services.serializer import (
 from app.shared_identity import normalize_email, generate_identity, full_name_from_claims
 
 router = APIRouter(prefix="/internal/v1", tags=["Internal – TradeOne"])
+
+DEMO_EMAILS = {"aarav.mehta@example.com", "priya.nair@example.com"}
 
 # ── Rate limiter (in-process, per IP, 60/min) ────────────────────────────────
 _rate_store: dict = defaultdict(list)
@@ -76,7 +78,7 @@ def _verify_internal_key(x_internal_key: Optional[str] = Header(None)) -> None:
 
 
 def _get_or_provision_user(email: str, db: Session, full_name: Optional[str] = None) -> User:
-    """Return existing user or provision a new one deterministically."""
+    """Return existing user or provision a new one with 0 holdings and starting funds."""
     norm = normalize_email(email)
     user = db.query(User).filter(User.email == norm).first()
     if not user:
@@ -94,15 +96,39 @@ def _get_or_provision_user(email: str, db: Session, full_name: Optional[str] = N
             bank_name=identity["bank_name"],
             bank_account_masked=identity["bank_account_masked"],
             bank_ifsc=identity["bank_ifsc"],
-            wallet_balance=1_000_000.0,  # ₹10,00,000
+            wallet_balance=float(getattr(settings, "STARTING_FUNDS", 1_000_000.0)),
         )
         db.add(user)
         db.commit()
         db.refresh(user)
-        # Assign deterministic starter portfolio
-        provision_user_portfolio(db, user)
-        db.refresh(user)
+        # Assign starter portfolio ONLY if explicitly enabled
+        if getattr(settings, "SEED_STARTER_PORTFOLIO", False):
+            provision_user_portfolio(db, user)
+            db.refresh(user)
     return user
+
+
+def _has_backing_trade(db: Session, user: User, instrument_id: int) -> bool:
+    """Checks if holding is backed by real executed delivery trades or primary allotments."""
+    is_demo = user.email in DEMO_EMAILS
+    if is_demo and getattr(settings, "DEMO_MODE", True):
+        return True
+
+    # Real executed trades only (SETTLED or EXECUTED, not pending limit orders)
+    trade = db.query(SecondaryOrder).filter(
+        SecondaryOrder.user_id == user.id,
+        SecondaryOrder.instrument_id == instrument_id,
+        SecondaryOrder.status.in_(["SETTLED", "EXECUTED"]),
+    ).first()
+    if trade:
+        return True
+
+    # Real primary allotment
+    allotment = db.query(PrimaryApplication).filter(
+        PrimaryApplication.user_id == user.id,
+        PrimaryApplication.status == "ALLOTTED",
+    ).first()
+    return allotment is not None
 
 
 # ── Dependency that chains both guards ───────────────────────────────────────
@@ -123,7 +149,7 @@ async def provision_user(
 ):
     """
     Provision a new user (or return existing). Idempotent.
-    Body: {"email": "...", "fullName": "..."}  (fullName optional)
+    New users get profile, shared-identity values, STARTING_FUNDS, and 0 holdings.
     """
     email = body.get("email", "").strip()
     if not email:
@@ -157,23 +183,42 @@ async def get_user_holdings(
 ):
     """
     Returns holdings in exactly the same JSON:API structure as GET /open/v1/holdings.
-    Supports cursor pagination (?limit=N&cursor=holding_id).
+    - Normalizes email (lowercase, trim).
+    - Looks up exact user only; never falls back to default/demo user.
+    - If user does not exist: 404 USER_NOT_FOUND.
+    - If user exists but has no holdings: 200 with data: [] and totals of 0.
+    - Delivery holdings only (net of sells, not pending limit orders).
     """
-    user = _get_or_provision_user(email, db)
-    q = db.query(Holding).filter(Holding.user_id == user.id)
+    clean_email = normalize_email(email)
+    user = db.query(User).filter(User.email == clean_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
+
+    # Seeded demo accounts only keep data in demo mode
+    if clean_email in DEMO_EMAILS and not getattr(settings, "DEMO_MODE", True):
+        return serialize_holdings_list([], limit=limit, cursor=cursor, next_cursor=None)
+
+    raw_holdings = (
+        db.query(Holding)
+        .filter(Holding.user_id == user.id, Holding.units > 0)
+        .order_by(Holding.id)
+        .all()
+    )
+
+    # Filter to real delivery holdings backed by executed trades / allotments
+    real_holdings = [h for h in raw_holdings if _has_backing_trade(db, user, h.instrument_id)]
 
     if cursor:
-        # cursor is the last holding_id seen; page forward by id
         ref = db.query(Holding).filter(Holding.holding_id == cursor).first()
         if ref:
-            q = q.filter(Holding.id > ref.id)
-
-    page = q.order_by(Holding.id).limit(limit + 1).all()
+            real_holdings = [h for h in real_holdings if h.id > ref.id]
 
     next_cursor = None
-    if len(page) > limit:
-        next_cursor = page[limit - 1].holding_id
-        page = page[:limit]
+    if len(real_holdings) > limit:
+        next_cursor = real_holdings[limit - 1].holding_id
+        page = real_holdings[:limit]
+    else:
+        page = real_holdings
 
     return serialize_holdings_list(page, limit=limit, cursor=cursor, next_cursor=next_cursor)
 
@@ -184,23 +229,64 @@ async def get_user_summary(
     db: Session = Depends(get_db),
 ):
     """
-    Returns a lightweight portfolio summary (total invested, current value,
-    unrealised P&L, wallet balance, holding count).
+    Returns portfolio summary: invested, current value, day change, holding count,
+    as_of, and timestamp of the last executed trade for that user.
+    - Normalizes email; exact lookup only.
+    - 404 USER_NOT_FOUND if user does not exist.
     """
-    user = _get_or_provision_user(email, db)
-    holdings = db.query(Holding).filter(Holding.user_id == user.id).all()
+    clean_email = normalize_email(email)
+    user = db.query(User).filter(User.email == clean_email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="USER_NOT_FOUND")
 
-    total_invested_paise = 0
-    total_current_paise = 0
-    total_accrued_paise = 0
+    # If demo user but demo mode is disabled, no holdings
+    if clean_email in DEMO_EMAILS and not getattr(settings, "DEMO_MODE", True):
+        real_holdings = []
+    else:
+        raw_holdings = (
+            db.query(Holding)
+            .filter(Holding.user_id == user.id, Holding.units > 0)
+            .all()
+        )
+        real_holdings = [h for h in raw_holdings if _has_backing_trade(db, user, h.instrument_id)]
 
-    for h in holdings:
-        inst = h.instrument
-        total_invested_paise += rupees_to_paise(h.avg_purchase_price * h.units)
-        total_current_paise += rupees_to_paise(inst.clean_price * h.units)
-        total_accrued_paise += rupees_to_paise(inst.accrued_interest * h.units)
+    total_invested_rupees = sum(h.avg_purchase_price * h.units for h in real_holdings)
+    total_current_rupees = sum(h.instrument.clean_price * h.units for h in real_holdings)
+    total_accrued_rupees = sum(h.instrument.accrued_interest * h.units for h in real_holdings)
 
+    total_invested_paise = rupees_to_paise(total_invested_rupees)
+    total_current_paise = rupees_to_paise(total_current_rupees)
+    total_accrued_paise = rupees_to_paise(total_accrued_rupees)
     unrealised_pnl_paise = total_current_paise - total_invested_paise
+
+    day_change_rupees = 0.0
+    for h in real_holdings:
+        ph = (
+            db.query(PriceHistory)
+            .filter(PriceHistory.instrument_id == h.instrument_id)
+            .order_by(PriceHistory.date.desc())
+            .first()
+        )
+        if ph and ph.clean_price:
+            day_change_rupees += (h.instrument.clean_price - ph.clean_price) * h.units
+    day_change_paise = rupees_to_paise(day_change_rupees)
+
+    # Last executed trade timestamp
+    last_order = (
+        db.query(SecondaryOrder)
+        .filter(
+            SecondaryOrder.user_id == user.id,
+            SecondaryOrder.status.in_(["SETTLED", "EXECUTED"]),
+        )
+        .order_by(SecondaryOrder.created_at.desc())
+        .first()
+    )
+    last_trade_at = (
+        last_order.created_at.isoformat()
+        if (last_order and last_order.created_at)
+        else None
+    )
+    as_of = get_current_ist_iso()
 
     return {
         "data": {
@@ -209,17 +295,27 @@ async def get_user_summary(
             "attributes": {
                 "customerId": user.customer_id,
                 "email": user.email,
-                "holdingCount": len(holdings),
+                "holdingCount": len(real_holdings),
+                "invested": round(total_invested_rupees, 2),
+                "investedPaise": total_invested_paise,
                 "totalInvestedPaise": total_invested_paise,
+                "currentValue": round(total_current_rupees, 2),
+                "currentValuePaise": total_current_paise,
                 "totalCurrentValuePaise": total_current_paise,
+                "dayChange": round(day_change_rupees, 2),
+                "dayChangePaise": day_change_paise,
                 "totalAccruedInterestPaise": total_accrued_paise,
                 "unrealisedPnlPaise": unrealised_pnl_paise,
                 "walletBalancePaise": rupees_to_paise(user.wallet_balance),
+                "asOf": as_of,
+                "as_of": as_of,
+                "lastTradeAt": last_trade_at,
+                "last_trade_at": last_trade_at,
                 "providerCode": settings.PROVIDER_CODE,
                 "brokerName": settings.BROKER_NAME,
                 "dpName": settings.DP_NAME,
                 "dpId": settings.DP_ID,
             },
         },
-        "meta": {"generatedAt": get_current_ist_iso()},
+        "meta": {"generatedAt": as_of},
     }

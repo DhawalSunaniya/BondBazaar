@@ -10,11 +10,12 @@ from app.database import get_db
 from app.config import settings
 from app.models.entities import (
     User, Instrument, Holding, SecondaryOrder, WalletTransaction,
-    PrimaryIssue, PrimaryApplication, ApiConsent, WebhookLog, ApiCallLog, SystemState
+    PrimaryIssue, PrimaryApplication, ApiConsent, WebhookLog, ApiCallLog, SystemState, OutboxEvent
 )
 from app.services.pricing_engine import apply_rate_shock
 from app.services.order_service import place_secondary_order, credit_bond_coupon, mature_bond_holding
 from app.services.webhook_service import trigger_holdings_updated_event
+from app.services.tradeone_outbox import create_outbox_event, trigger_outbox_delivery, resend_all_outbox_events
 from app.services.seed_data import seed_database
 from app.templates_engine import templates
 
@@ -40,6 +41,7 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
     api_call_logs = db.query(ApiCallLog).order_by(ApiCallLog.timestamp.desc()).limit(30).all()
     primary_issues = db.query(PrimaryIssue).all()
     primary_apps = db.query(PrimaryApplication).all()
+    outbox_events = db.query(OutboxEvent).order_by(OutboxEvent.created_at.desc()).limit(50).all()
 
     return templates.TemplateResponse("admin.html", {
         "request": request,
@@ -51,7 +53,8 @@ async def admin_dashboard(request: Request, db: Session = Depends(get_db)):
         "webhook_logs": webhook_logs,
         "api_call_logs": api_call_logs,
         "primary_issues": primary_issues,
-        "primary_apps": primary_apps
+        "primary_apps": primary_apps,
+        "outbox_events": outbox_events,
     })
 
 @router.post("/login")
@@ -251,10 +254,74 @@ async def admin_allot_primary(
                         avg_purchase_yield=inst.current_ytm
                     ))
                 trigger_holdings_updated_event(db, app.user, background_tasks)
+                outbox_evt = create_outbox_event(db, app.user.email, event="HOLDINGS_CHANGED", provider="c")
+                trigger_outbox_delivery(outbox_evt.event_id)
         issue.status = "ALLOTTED"
         db.commit()
 
     return RedirectResponse(url="/admin?msg=Primary+allotment+processed", status_code=303)
+
+@router.post("/outbox/resend-all")
+async def admin_outbox_resend_all(request: Request, db: Session = Depends(get_db)):
+    if not is_admin_authenticated(request):
+        return RedirectResponse(url="/admin", status_code=303)
+    count = resend_all_outbox_events(db)
+    return RedirectResponse(url=f"/admin?msg=Rescheduled+{count}+outbox+events", status_code=303)
+
+@router.post("/purge-starter-holdings")
+async def admin_purge_starter_holdings(
+    request: Request,
+    user_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Removes starter/seeded holdings unbacked by executed trades for a user (or all non-demo users).
+    Fires HOLDINGS_CHANGED outbox event for each modified user in the same transaction.
+    Real executed trades are never touched.
+    """
+    if not is_admin_authenticated(request):
+        return RedirectResponse(url="/admin", status_code=303)
+
+    from app.routers.internal import DEMO_EMAILS
+    if user_id:
+        target_users = [db.query(User).filter(User.id == user_id).first()]
+    else:
+        target_users = db.query(User).all()
+
+    purged_count = 0
+    events_to_trigger = []
+
+    for u in target_users:
+        if not u or u.email in DEMO_EMAILS:
+            continue
+        user_holdings = db.query(Holding).filter(Holding.user_id == u.id).all()
+        user_modified = False
+        for h in user_holdings:
+            # Check backing executed trade
+            has_trade = db.query(SecondaryOrder).filter(
+                SecondaryOrder.user_id == u.id,
+                SecondaryOrder.instrument_id == h.instrument_id,
+                SecondaryOrder.status.in_(["SETTLED", "EXECUTED"])
+            ).first()
+            has_allotment = db.query(PrimaryApplication).filter(
+                PrimaryApplication.user_id == u.id,
+                PrimaryApplication.status == "ALLOTTED"
+            ).first()
+            if not has_trade and not has_allotment:
+                db.delete(h)
+                purged_count += 1
+                user_modified = True
+
+        if user_modified:
+            evt = create_outbox_event(db, u.email, event="HOLDINGS_CHANGED", provider="c")
+            events_to_trigger.append(evt)
+
+    db.commit()
+
+    for evt in events_to_trigger:
+        trigger_outbox_delivery(evt.event_id)
+
+    return RedirectResponse(url=f"/admin?msg=Purged+{purged_count}+unbacked+holdings", status_code=303)
 
 @router.post("/reset-data")
 async def admin_reset_data(request: Request, db: Session = Depends(get_db)):

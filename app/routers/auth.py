@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import uuid
 
+from app.config import settings
 from app.database import get_db
 from app.models.entities import User
 from app.services.auth_service import generate_otp_for_email, verify_otp_for_email
@@ -109,14 +110,14 @@ async def register_action(
         bank_name=identity["bank_name"],
         bank_account_masked=identity["bank_account_masked"],
         bank_ifsc=identity["bank_ifsc"],
-        wallet_balance=1_000_000.0,  # ₹10,00,000
+        wallet_balance=float(getattr(settings, "STARTING_FUNDS", 1_000_000.0)),
     )
     db.add(user)
     db.commit()
     db.refresh(user)
 
-    # Assign deterministic starter portfolio (Provider-C theme: G-Secs + SGBs)
-    provision_user_portfolio(db, user)
+    if getattr(settings, "SEED_STARTER_PORTFOLIO", False):
+        provision_user_portfolio(db, user)
 
     resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie("bb_session_email", user.email, max_age=86400 * 30, httponly=True)
@@ -147,12 +148,13 @@ async def google_login_action(
             bank_name=identity["bank_name"],
             bank_account_masked=identity["bank_account_masked"],
             bank_ifsc=identity["bank_ifsc"],
-            wallet_balance=1_000_000.0,
+            wallet_balance=float(getattr(settings, "STARTING_FUNDS", 1_000_000.0)),
         )
         db.add(user)
         db.commit()
         db.refresh(user)
-        provision_user_portfolio(db, user)
+        if getattr(settings, "SEED_STARTER_PORTFOLIO", False):
+            provision_user_portfolio(db, user)
 
     resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie("bb_session_email", user.email, max_age=86400 * 30, httponly=True)

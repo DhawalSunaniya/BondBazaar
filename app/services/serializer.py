@@ -116,6 +116,10 @@ def serialize_holdings_list(
     next_cursor: Optional[str] = None
 ) -> Dict[str, Any]:
     serialized = [serialize_holding(h) for h in holdings]
+    total_invested_paise = sum(rupees_to_paise(h.avg_purchase_price * h.units) for h in holdings)
+    total_current_paise = sum(rupees_to_paise(h.instrument.clean_price * h.units) for h in holdings)
+    total_accrued_paise = sum(rupees_to_paise(h.instrument.accrued_interest * h.units) for h in holdings)
+
     links: Dict[str, Optional[str]] = {
         "self": f"/open/v1/holdings?limit={limit}" + (f"&cursor={cursor}" if cursor else "")
     }
@@ -129,7 +133,12 @@ def serialize_holdings_list(
         "links": links,
         "meta": {
             "generatedAt": get_current_ist_iso(),
-            "count": len(serialized)
+            "count": len(serialized),
+            "totalInvestedPaise": total_invested_paise,
+            "totalCurrentValuePaise": total_current_paise,
+            "totalAccruedInterestPaise": total_accrued_paise,
+            "totalInvested": round(sum(h.avg_purchase_price * h.units for h in holdings), 2),
+            "totalCurrentValue": round(sum(h.instrument.clean_price * h.units for h in holdings), 2),
         }
     }
 

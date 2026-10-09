@@ -88,9 +88,13 @@ def load_shared_instruments(db: Session) -> List[Instrument]:
 def provision_user_portfolio(db: Session, user: User) -> List[Holding]:
     """
     Creates a deterministic starter portfolio for `user` if they have no holdings yet.
-    Does nothing if holdings already exist.
+    Only creates holdings if SEED_STARTER_PORTFOLIO is True.
+    Does nothing if holdings already exist or SEED_STARTER_PORTFOLIO is False.
     Returns the list of created Holding objects.
     """
+    if not getattr(settings, "SEED_STARTER_PORTFOLIO", False):
+        return []
+
     email = normalize_email(user.email)
     if email in DEMO_EMAILS:
         return []

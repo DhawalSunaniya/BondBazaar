@@ -257,3 +257,18 @@ class SystemState(Base):
     simulate_outage = Column(Boolean, default=False)
     outage_until = Column(DateTime(timezone=True), nullable=True)
     slow_mode = Column(Boolean, default=False)
+
+class OutboxEvent(Base):
+    __tablename__ = "outbox_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(String(50), unique=True, index=True, nullable=False)
+    email = Column(String(120), index=True, nullable=False)
+    provider = Column(String(20), default="c", nullable=False)
+    event = Column(String(50), default="HOLDINGS_CHANGED", nullable=False)
+    occurred_at = Column(String(50), nullable=False)
+    status = Column(String(20), default="PENDING")  # PENDING, DELIVERED, FAILED
+    attempts = Column(Integer, default=0)
+    last_attempt_at = Column(DateTime(timezone=True), nullable=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=ist_now)
