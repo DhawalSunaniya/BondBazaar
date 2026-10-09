@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     DP_ID: str = "IN300003"
 
     # Internal API (TradeOne)
-    INTERNAL_API_ENABLED: bool = False
-    INTERNAL_API_KEY: str = ""
+    INTERNAL_API_ENABLED: bool = True
+    INTERNAL_API_KEY: str = "bb_int_key_4a9b2c8e1f7d5a3b6e8c0d2f4a1e9c7b"
     SHARED_IDENTITY_SALT: str = "tradeone-shared-identity-salt-2026"
     TRADEONE_URL: str = ""
 
