@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException
@@ -17,6 +18,10 @@ pricing_task = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Log startup configuration audit (names only, never values)
+    logging.basicConfig(level=logging.INFO)
+    settings.log_startup_audit()
+
     # Initialize DB & Seed Data
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
@@ -45,10 +50,10 @@ app = FastAPI(
 )
 
 # CORS
-cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+_cors_origins = settings.cors_origins_list
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins if cors_origins else ["*"],
+    allow_origins=_cors_origins if _cors_origins else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

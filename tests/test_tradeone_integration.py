@@ -277,6 +277,11 @@ def make_test_app():
 def internal_client(monkeypatch):
     monkeypatch.setattr("app.config.settings.INTERNAL_API_ENABLED", True)
     monkeypatch.setattr("app.config.settings.INTERNAL_API_KEY", "test-key-abc")
+    monkeypatch.setattr("app.config.settings.SHARED_IDENTITY_SALT", "test-shared-salt-abc")
+    import app.routers.internal as internal_mod
+    monkeypatch.setattr(internal_mod.settings, "INTERNAL_API_ENABLED", True)
+    monkeypatch.setattr(internal_mod.settings, "INTERNAL_API_KEY", "test-key-abc")
+    monkeypatch.setattr(internal_mod.settings, "SHARED_IDENTITY_SALT", "test-shared-salt-abc")
     # Patch get_db to return the in-memory db
     db = make_test_db()
     seed_instruments(db)

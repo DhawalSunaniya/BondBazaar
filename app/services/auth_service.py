@@ -58,14 +58,11 @@ def authenticate_api_client(db: Session, auth_header: Optional[str]) -> Optional
     app_id, app_secret = parse_basic_auth(auth_header)
     if not app_id or not app_secret:
         return None
-    
+
     client = db.query(ApiClient).filter(ApiClient.client_id == app_id, ApiClient.is_active == True).first()
     if not client:
         return None
 
-    # Check demo shortcut first, then SHA-256 hash
-    if app_secret == "bb-demo-secret" and client.client_id == "portfolio-aggregator":
-        return client
     try:
         if verify_secret(app_secret, client.client_secret_hash):
             return client

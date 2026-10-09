@@ -1,6 +1,22 @@
+from typing import Any
 from fastapi.templating import Jinja2Templates
 
-templates = Jinja2Templates(directory="app/templates")
+class CompatibleJinja2Templates(Jinja2Templates):
+    def TemplateResponse(self, *args: Any, **kwargs: Any):
+        # Support legacy Starlette signature: TemplateResponse("file.html", {"request": request, ...})
+        if len(args) >= 2 and isinstance(args[0], str) and isinstance(args[1], dict):
+            name = args[0]
+            context = args[1]
+            request = kwargs.pop("request", context.get("request"))
+            return super().TemplateResponse(request=request, name=name, context=context, **kwargs)
+        if len(args) == 1 and isinstance(args[0], str) and "context" in kwargs:
+            name = args[0]
+            context = kwargs.pop("context")
+            request = kwargs.pop("request", (context or {}).get("request"))
+            return super().TemplateResponse(request=request, name=name, context=context, **kwargs)
+        return super().TemplateResponse(*args, **kwargs)
+
+templates = CompatibleJinja2Templates(directory="app/templates")
 
 def format_inr(val, symbol=True):
     """Indian number formatting (e.g. ₹1,25,000.00)."""

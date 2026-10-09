@@ -1,7 +1,6 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from passlib.context import CryptContext
 import datetime
 from datetime import timedelta
 
@@ -13,8 +12,6 @@ from app.services.auth_service import (
     authenticate_bearer_token,
     hash_secret
 )
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 @pytest.fixture
 def auth_db():
@@ -37,7 +34,7 @@ def auth_db():
 
     client = ApiClient(
         client_id="portfolio-aggregator",
-        client_secret_hash=pwd_context.hash("bb-demo-secret"),
+        client_secret_hash=hash_secret("bb-demo-secret"),
         client_name="Portfolio Aggregator",
         allowed_redirect_uris="http://localhost:3000/link-complete",
         allowed_webhook_urls="http://localhost:8000/webhooks/bondbazaar",

@@ -299,6 +299,55 @@ Body:
 
 ---
 
+## ⚙️ Configuration
+
+BondBazaar is configured via environment variables (or a local `.env` file loaded via `pydantic-settings`).
+
+> [!IMPORTANT]
+> **Render does not read `.env` files!**
+> When deploying to Render, you must configure all environment variables directly in the Render Dashboard under **Dashboard → Service → Environment Variables**. The `.env` file is ignored by Git and only applies to local development.
+
+### Setup Helper
+To quickly configure a local development environment with fresh cryptographic secrets:
+```bash
+python scripts/setup_env.py
+```
+This copies `.env.example` to `.env` (without overwriting an existing one), generates per-site secrets using `secrets.token_urlsafe(32)`, and prompts for the shared secrets (`SHARED_IDENTITY_SALT` and `INTERNAL_API_KEY`) that must match your sibling sites.
+
+### Environment Variables Reference
+
+| Variable | Required in Production | Default | Purpose |
+| :--- | :---: | :--- | :--- |
+| `ENVIRONMENT` | No | `development` | Environment mode (`development` or `production`). In production, missing or weak secrets cause the server to refuse startup. |
+| `SECRET_KEY` | **Yes** | Auto-generated in dev | Cryptographic signing key for JWTs and auth tokens. |
+| `SESSION_SECRET` | **Yes** | Auto-generated in dev | Cryptographic secret for browser session cookies. |
+| `ADMIN_PASSWORD` | **Yes** | Auto-generated in dev | Password for the `/admin` simulation and control portal. |
+| `WEBHOOK_SIGNING_SECRET` | **Yes** | Auto-generated in dev | HMAC-SHA256 secret for outbound webhook signatures (`X-BB-Signature`). |
+| `INTERNAL_API_KEY` | **Yes** *(if internal API enabled)* | `None` | Pre-shared key for TradeOne aggregator (`x-internal-key` header). **Must be identical across all sibling sites.** |
+| `SHARED_IDENTITY_SALT` | **Yes** *(if internal API enabled)* | `None` | Salt for deterministic PAN, Demat, and Customer ID generation. **Must be identical across all sibling sites.** |
+| `INTERNAL_API_ENABLED` | No | `false` | Enables `/internal/v1/*` endpoints for TradeOne integration. Automatically forced to `false` if shared secrets are missing. |
+| `DATABASE_URL` | No | `sqlite:///./bondbazaar.db` | Database connection URL. Legacy `postgres://` URLs are automatically converted to `postgresql://`. |
+| `BASE_URL` | No | `http://localhost:8000` | Canonical public URL for BondBazaar (used in Link token redirect URLs). |
+| `TRADEONE_URL` | No | `http://localhost:3000` | Base URL of the TradeOne aggregator (receives outbox events). |
+| `DEPOSITORY_URL` | No | `None` | External clearing / depository sandbox URL (optional). |
+| `GOOGLE_CLIENT_ID` | No | `None` | OAuth2 Client ID for Google Single Sign-On. |
+| `GOOGLE_CLIENT_SECRET` | No | `None` | OAuth2 Client Secret for Google Single Sign-On. |
+| `GOOGLE_REDIRECT_URI` | No | `None` | Redirect callback URL for Google OAuth2 flow. |
+| `ALLOWED_REDIRECT_URIS` | No | `http://localhost:3000/link-complete` | Comma-separated list of allowed Link flow callback URLs. |
+| `ALLOWED_WEBHOOK_URLS` | No | `http://localhost:8000/webhooks/bondbazaar` | Comma-separated list of allowed client webhook destinations. |
+| `ALLOWED_EMAILS` | No | `None` | Comma-separated list of permitted emails; if set, login/signup is restricted. |
+| `CORS_ORIGINS` | No | `*` | Comma-separated list of allowed CORS origins. |
+| `STARTING_FUNDS` | No | `1000000.0` | Default wallet balance in ₹ (Rupees) for new users (₹10 Lakh). |
+| `SEED_STARTER_PORTFOLIO` | No | `false` | Automatically allocate sample bond holdings on user signup. |
+| `DEMO_OTP` | No | `123456` | Fixed OTP for testing/development. |
+| `DEMO_API_CLIENT_SECRET` | No | `bb-demo-secret` (dev only) | Seeded secret for demo `portfolio-aggregator` API client. |
+| `PLATFORM_NAME` | No | `BondBazaar` | Platform display name in UI headers and emails. |
+| `PROVIDER_CODE` | No | `c` | Provider code in TradeOne ecosystem (`c` = BondBazaar). |
+| `DP_NAME` | No | `BondBazaar Depository Services Ltd` | Depository Participant name. |
+| `DP_ID` | No | `IN303892` | Depository Participant ID. |
+
+---
+
 ## 🧪 Running Unit & Integration Tests
 Execute all unit and integration tests:
 ```bash
@@ -318,3 +367,4 @@ Deploy to Render:
 - Environment: **Python 3**
 - Build Command: `pip install -r requirements.txt`
 - Start Command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+

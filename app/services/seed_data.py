@@ -12,6 +12,7 @@ from app.models.entities import (
     ApiClient, LinkToken, ApiConsent, WebhookLog, ApiCallLog, SystemState
 )
 from app.services.bond_math import calculate_bond_metrics
+from app.config import settings
 
 def _hash_secret(secret: str) -> str:
     """SHA-256 hash for API client secrets. Matches auth_service.verify_secret()."""
@@ -954,12 +955,14 @@ def seed_database(db: Session, force_reset: bool = False):
         db.commit()
 
     # Seed Registered API Client App
-    # app_id = "portfolio-aggregator", app_secret = "bb-demo-secret"
+    # Credentials: app_id = "portfolio-aggregator"
+    # Secret in dev defaults to "bb-demo-secret"; set DEMO_API_CLIENT_SECRET in env to override.
+    demo_secret = getattr(settings, "DEMO_API_CLIENT_SECRET", None) or "bb-demo-secret"
     client = db.query(ApiClient).filter(ApiClient.client_id == "portfolio-aggregator").first()
     if not client:
         client = ApiClient(
             client_id="portfolio-aggregator",
-            client_secret_hash=_hash_secret("bb-demo-secret"),
+            client_secret_hash=_hash_secret(demo_secret),
             client_name="Portfolio Aggregator",
             allowed_redirect_uris="http://localhost:3000/link-complete,https://oauth.pstmn.io/v1/callback,http://127.0.0.1:3000/link-complete",
             allowed_webhook_urls="http://localhost:8000/webhooks/bondbazaar,http://127.0.0.1:8000/webhooks/bondbazaar,https://webhook.site/demo",
