@@ -107,14 +107,14 @@ def test_production_exits_on_missing_secret_key(monkeypatch):
 
 def test_production_exits_on_missing_internal_api_key(monkeypatch):
     env = _prod_env()
-    del env["INTERNAL_API_KEY"]
+    env["INTERNAL_API_KEY"] = ""
     with pytest.raises(SystemExit):
         _reload_settings(env)
 
 
 def test_production_exits_on_missing_shared_identity_salt(monkeypatch):
     env = _prod_env()
-    del env["SHARED_IDENTITY_SALT"]
+    env["SHARED_IDENTITY_SALT"] = ""
     with pytest.raises(SystemExit):
         _reload_settings(env)
 
@@ -154,23 +154,19 @@ def test_sqlite_url_unchanged():
 # ── 6. INTERNAL_API_ENABLED forced False when shared secrets absent ───────────
 
 def test_internal_api_disabled_when_key_missing():
-    env = _dev_env()
-    del env["INTERNAL_API_KEY"]
+    env = _dev_env(INTERNAL_API_KEY="")
     s = _reload_settings(env)
     assert s.INTERNAL_API_ENABLED is False
 
 
 def test_internal_api_disabled_when_salt_missing():
-    env = _dev_env()
-    del env["SHARED_IDENTITY_SALT"]
+    env = _dev_env(SHARED_IDENTITY_SALT="")
     s = _reload_settings(env)
     assert s.INTERNAL_API_ENABLED is False
 
 
 def test_internal_api_disabled_when_both_missing():
-    env = _dev_env()
-    del env["INTERNAL_API_KEY"]
-    del env["SHARED_IDENTITY_SALT"]
+    env = _dev_env(INTERNAL_API_KEY="", SHARED_IDENTITY_SALT="")
     s = _reload_settings(env)
     assert s.INTERNAL_API_ENABLED is False
 
