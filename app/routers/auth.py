@@ -36,12 +36,26 @@ async def send_otp_action(request: Request, email: str = Form(...), db: Session 
     clean_email = normalize_email(email)
     user = db.query(User).filter(User.email == clean_email).first()
     if not user:
-        return templates.TemplateResponse("login.html", {
-            "request": request,
-            "email": clean_email,
-            "otp_sent": False,
-            "error_message": f"Email '{clean_email}' not found. Please register or use demo users (aarav.mehta@example.com / priya.nair@example.com)."
-        })
+        # Auto-provision on the fly with starting funds and 0 holdings
+        identity = generate_identity(clean_email)
+        display_name = full_name_from_claims(None, clean_email)
+        user = User(
+            email=clean_email,
+            full_name=display_name,
+            mobile=identity["mobile"],
+            customer_id=identity["customer_id"],
+            pan=identity["pan"],
+            pan_masked=identity["pan_masked"],
+            demat_account=identity["demat_account"],
+            demat_account_masked=identity["demat_account_masked"],
+            bank_name=identity["bank_name"],
+            bank_account_masked=identity["bank_account_masked"],
+            bank_ifsc=identity["bank_ifsc"],
+            wallet_balance=float(getattr(settings, "STARTING_FUNDS", 1_000_000.0)),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
     generate_otp_for_email(clean_email)
     return templates.TemplateResponse("login.html", {
@@ -69,6 +83,27 @@ async def verify_otp_action(
         })
 
     user = db.query(User).filter(User.email == clean_email).first()
+    if not user:
+        identity = generate_identity(clean_email)
+        display_name = full_name_from_claims(None, clean_email)
+        user = User(
+            email=clean_email,
+            full_name=display_name,
+            mobile=identity["mobile"],
+            customer_id=identity["customer_id"],
+            pan=identity["pan"],
+            pan_masked=identity["pan_masked"],
+            demat_account=identity["demat_account"],
+            demat_account_masked=identity["demat_account_masked"],
+            bank_name=identity["bank_name"],
+            bank_account_masked=identity["bank_account_masked"],
+            bank_ifsc=identity["bank_ifsc"],
+            wallet_balance=float(getattr(settings, "STARTING_FUNDS", 1_000_000.0)),
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
     resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie("bb_session_email", user.email, max_age=86400 * 30, httponly=True)
     return resp
