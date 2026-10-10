@@ -15,14 +15,12 @@ from app.services.portfolio_provisioner import provision_user_portfolio
 
 router = APIRouter(tags=["Authentication"])
 
-def get_current_user_optional(request: Request, db: Session) -> User:
+def get_current_user_optional(request: Request, db: Session) -> Optional[User]:
     email_raw = request.cookies.get("bb_session_email")
     if not email_raw:
-        # Default to Aarav Mehta for smooth exploration if not logged in
-        return db.query(User).filter(User.email == "aarav.mehta@example.com").first()
+        return None
     email = normalize_email(email_raw)
-    user = db.query(User).filter(User.email == email).first()
-    return user or db.query(User).filter(User.email == "aarav.mehta@example.com").first()
+    return db.query(User).filter(User.email == email).first()
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
@@ -103,6 +101,8 @@ async def verify_otp_action(
         db.add(user)
         db.commit()
         db.refresh(user)
+        if getattr(settings, "SEED_STARTER_PORTFOLIO", False):
+            provision_user_portfolio(db, user)
 
     resp = RedirectResponse(url="/", status_code=303)
     resp.set_cookie("bb_session_email", user.email, max_age=86400 * 30, httponly=True)

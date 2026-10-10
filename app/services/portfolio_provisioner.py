@@ -23,7 +23,7 @@ from datetime import date
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.models.entities import Instrument, Holding, User
+from app.models.entities import Instrument, Holding, User, SecondaryOrder
 from app.shared_identity import normalize_email
 
 # ── OVERLAPPING ISINs (must match ISINs used in other providers) ──────────────
@@ -139,6 +139,24 @@ def provision_user_portfolio(db: Session, user: User) -> List[Holding]:
         )
         db.add(h)
         created.append(h)
+
+        # Backing settled order so TradeOne delivery audit recognizes the holding
+        order = SecondaryOrder(
+            order_id=f"ord_p{uuid.uuid4().hex[:8]}",
+            user_id=user.id,
+            instrument_id=inst.id,
+            side="BUY",
+            order_type="MARKET",
+            units=units,
+            execution_price=avg_price,
+            accrued_interest_per_unit=inst.accrued_interest or 0.0,
+            stamp_duty=round(avg_price * units * 0.00015, 2),
+            exchange_charges=25.0,
+            total_consideration=round((avg_price + (inst.accrued_interest or 0.0)) * units + 25.0, 2),
+            settlement_date=date.today(),
+            status="SETTLED"
+        )
+        db.add(order)
 
     # Starting wallet
     if user.wallet_balance < 1_000_000:
